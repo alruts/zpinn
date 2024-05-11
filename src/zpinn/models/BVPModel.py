@@ -1,10 +1,11 @@
 import sys
-
+from functools import partial
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 from dataclasses import dataclass
 from typing import Callable
+
 
 from jax.tree_util import tree_map, tree_leaves, tree_reduce
 from jax import vmap, grad
@@ -180,7 +181,7 @@ class BVPModel:
         u_cplx = 1j * 2 * jnp.pi * (f * self.fc + self.f0) * _rho0
         u_cplx *= p_zr + 1j * p_zi
 
-        pr, pi = self.p_net(params, *args)  #! check if this is possible
+        pr, pi = self.p_net(params, *args)
         pr = pr * self.ac + self.a0
         pi = pi * self.bc + self.b0
         p_cplx = pr + 1j * pi
@@ -188,11 +189,13 @@ class BVPModel:
         z = p_cplx / u_cplx
         return z.real, z.imag
 
-    def compute_weights(self, params, batches):
+    def compute_weights(self, dat_batch, dom_batch, bnd_batch):
         """Computes the lambda weights for each loss."""
 
         # Compute the gradient of each loss w.r.t. the parameters
-        grads = jax.jacrev(self.losses, argnums=0)(params, self.coeffs, **batches)
+        grads = jax.jacrev(self.losses, argnums=0)(
+            self.parameters(), self.coefficients, dat_batch, dom_batch, bnd_batch
+        )
 
         # Compute the grad norm of each loss
         grad_norm_dict = {}
@@ -210,9 +213,10 @@ class BVPModel:
 
     def compute_coeffs(self, batch, *args):
         """Computes the coefficient updates for the impedance model."""
-        pass
+        grads = jax.jacrev(self.losses, argnums=1)(
+            self.parameters(), self.coefficients, batch, *args
+        )
 
-    #! @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Returns the losses of the model."""
         data_loss_re, data_loss_im = self.p_loss(params, dat_batch)
@@ -249,12 +253,11 @@ class BVPModel:
         """Boundary loss."""
         coords = batch
         f, x, y, z = coords.values()
-        zr, zi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
-        z_est = self.impedance_model(coeffs, f)
+        zpr, zpi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
+        zmr, zmi = self.coefficients["alpha"], self.coefficients["beta"]
 
-        return self.criterion(zr, z_est.real), self.criterion(zi, z_est.imag)
+        return self.criterion(zpr, zmr), self.criterion(zpi, zmi)
 
-    #! @eqx.filter_jit
     def loss(self, params, weights, coeffs, batches, *args):
         # Compute losses
         losses = self.losses(params, coeffs, **batches)

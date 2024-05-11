@@ -3,7 +3,7 @@ import jax.numpy as jnp
 
 def constant_impedance(coeffs, f):
     """Return the impedance of the singular model."""
-    return coeffs["alpha"] + 1j * coeffs["beta"]
+    return coeffs["alpha"], coeffs["beta"]
 
 
 def RMK_plus_1(coeffs, f):
