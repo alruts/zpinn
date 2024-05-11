@@ -1,0 +1,40 @@
+TODO
+
+
+use new methods (mMLP, adaptive weights)
+    - mmlp [X]
+    - adaptive weights [] (almost there, hvernig væri best að implementa? komið í try_grad_weights notebook)
+            Nota "object" oriented leið hjá okkar mönnum, búa til base class sem implementar allt nema 
+            loss föllin og arkítektúr (jafnvel loss líka í mínu tilfelli?),  
+    - vinna áfram í software engineering partinum
+        - setja mikinn tíma í model evaluator 
+
+            BINGO: ser lambda fyrir im og re parts? lambda_bcre, lambda_bcim ... þannig nær networkan að balannsa
+            real og im parts respectively .... yeeeeee baby
+
+Implement smarter way to specify which data points to use (pick specific points?)
+    use fewer POINTS (3x3x2 grid) []
+    preprocess (3x3 grid in the middle of sample somewhere)
+
+create new data, with val pressure and particle velocity gt [~] 
+    - room
+    - baffle
+    
+Examine the (edge effect) on the impedance (is it worth it to only impose at lambda/4 away from edge and .. from corner etc.)
+
+
+(It is probably possible to use
+u = p / Z
+)
+
+gen error plots while training (add)
+
+
+EXTRA: 
+    Explore exactly imposing BC (would be amazee)
+    save pressure transforms for every frequency seperately (equal convergence)
+        (need to create continuous a, b constants?)
+    - use jaxopt (for potential use of LBFGS)
+
+
+
