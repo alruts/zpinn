@@ -137,29 +137,38 @@ class BVPModel:
         else:
             return p[0], p[1]
 
-    def r_net(self, params, *args, part="real"):
+    def r_net(self, params, *args):
         """PDE residual network."""
         x, y, z, f = args
-
-        p_xx = grad(grad(self.p_net, argnums=1), argnums=1)(params, *args, part=part)
-        p_xx /= self.xc**2
-        p_yy = grad(grad(self.p_net, argnums=2), argnums=2)(params, *args, part=part)
-        p_yy /= self.yc**2
-        p_zz = grad(grad(self.p_net, argnums=3), argnums=3)(params, *args, part=part)
-        p_zz /= self.zc**2
-
         k = (2 * jnp.pi * (f * self.fc + self.f0)) / (_c0)
+        pr_pred, pi_pred = self.p_net(params, *args)
 
-        if part == "real":
-            p = self.p_net(params, *args, part=part) * self.ac + self.a0
-        elif part == "imag":
-            p = self.p_net(params, *args, part=part) * self.bc + self.b0
+        pr = pr_pred * self.ac + self.a0
+        pi = pi_pred * self.bc + self.b0
 
-        # Todo: make hnet more efficient by not computing pressure twice (once for real and imag)
-        return p_xx + p_yy + p_zz + k**2 * p
-        
+        norm = self.xc * self.yc * self.zc
 
-    def z_net(self, params, *args, part=None):
+        # compute real part of the Laplacian
+        p_xx = grad(grad(self.p_net, argnums=1), argnums=1)(params, *args, part="real")
+        p_xx /= self.xc**2
+        p_yy = grad(grad(self.p_net, argnums=2), argnums=2)(params, *args, part="real")
+        p_yy /= self.yc**2
+        p_zz = grad(grad(self.p_net, argnums=3), argnums=3)(params, *args, part="real")
+        p_zz /= self.zc**2
+        Lr = p_xx + p_yy + p_zz
+
+        # compute imaginry part of the Laplacian
+        p_xx = grad(grad(self.p_net, argnums=1), argnums=1)(params, *args, part="imag")
+        p_xx /= self.xc**2
+        p_yy = grad(grad(self.p_net, argnums=2), argnums=2)(params, *args, part="imag")
+        p_yy /= self.yc**2
+        p_zz = grad(grad(self.p_net, argnums=3), argnums=3)(params, *args, part="imag")
+        p_zz /= self.zc**2
+        Li = p_xx + p_yy + p_zz
+
+        return norm * (Lr + k**2 * pr), norm * (Li + k**2 * pi)
+
+    def z_net(self, params, *args):
         """Boundary condition network."""
         x, y, z, f = args
 
@@ -233,23 +242,17 @@ class BVPModel:
         """PDE residual loss."""
         coords = batch
         f, x, y, z = coords.values()
-        rr = vmap(self.r_net, in_axes=(None, *[0] * 4))(
-            params, *(x, y, z, f), part="real"
-        )
-        ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(
-            params, *(x, y, z, f), part="imag"
-        )
-
+        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
         return self.criterion(rr, 0.0), self.criterion(ri, 0.0)
 
     def z_loss(self, params, coeffs, batch):
         """Boundary loss."""
         coords = batch
         f, x, y, z = coords.values()
-        z_pred = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
+        zr, zi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
         z_est = self.impedance_model(coeffs, f)
 
-        return self.criterion(z_pred, z_est)
+        return self.criterion(zr, z_est.real), self.criterion(zi, z_est.imag)
 
     #! @eqx.filter_jit
     def loss(self, params, weights, coeffs, batches, *args):
