@@ -1,5 +1,4 @@
 import sys
-from functools import partial
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -20,27 +19,16 @@ criteria = {
     "mae": lambda x, y: jnp.mean(jnp.abs(x - y)),
 }
 
-unity_tf = {
-    "x0": 0.0,
-    "xc": 1.0,
-    "y0": 0.0,
-    "yc": 1.0,
-    "z0": 0.0,
-    "zc": 1.0,
-    "a0": 0.0,
-    "ac": 1.0,
-    "b0": 0.0,
-    "bc": 1.0,
-}
-
 
 @dataclass
 class BVPModel:
     """Base class for the boundary value problem models."""
 
+    model: eqx.Module
     criterion: Callable
     coefficients: dict
-    model: eqx.Module
+    weights: dict
+    momentum: float
     x0: float
     xc: float
     y0: float
@@ -59,30 +47,12 @@ class BVPModel:
         transforms,
         impedance_model,
         criterion="mse",
+        momentum=0.9,
     ):
         self.model = model
-        self.coefficients = {}
-
-        # Initialize the coefficients based on the impedance model
-        if impedance_model == "single_freq":
-            self.coefficients = {"alpha": 0.0, "beta": 0.0}
-            self.impedance_model = constant_impedance
-
-        elif impedance_model == "RMK+1":
-            self.coefficients = {
-                "K": 0.0,
-                "R_1": 0.0,
-                "M": 0.0,
-                "G": 0.0,
-                "gamma": 0.0,
-            }
-            self.impedance_model = RMK_plus_1
-
-        else:
-            raise NotImplementedError(
-                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1']"
-            )
-
+        self.momentum = momentum
+        self.weights = self._init_weights()
+        self.coefficients, self.impedance_model = self._init_z(impedance_model)
         (
             self.x0,
             self.xc,
@@ -96,12 +66,12 @@ class BVPModel:
             self.ac,
             self.b0,
             self.bc,
-        ) = self._transforms(transforms)
+        ) = self._init_transforms(transforms)
 
         # Initialize the loss criterion
         self.criterion = criteria[criterion]
 
-    def _transforms(self, tfs):
+    def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
         x0, xc = tfs["x0"], tfs["xc"]
         y0, yc = tfs["y0"], tfs["yc"]
@@ -110,6 +80,39 @@ class BVPModel:
         a0, ac = tfs["a0"], tfs["ac"]
         b0, bc = tfs["b0"], tfs["bc"]
         return x0, xc, y0, yc, z0, zc, f0, fc, a0, ac, b0, bc
+
+    def _init_weights(self):
+        """Initialize the weights for each loss."""
+        return {
+            "data_re": 1.0,
+            "data_im": 1.0,
+            "pde_re": 1.0,
+            "pde_im": 1.0,
+            "bc_re": 1.0,
+            "bc_im": 1.0,
+        }  #! add config for this
+
+    def _init_z(self, impedance_model):
+        # Initialize the coefficients based on the impedance model
+        if impedance_model == "single_freq":
+            coefficients = {"alpha": 1.0, "beta": -1.0}
+            z_model = constant_impedance
+
+        elif impedance_model == "RMK+1":
+            coefficients = {
+                "K": 0.0,
+                "R_1": 0.0,
+                "M": 0.0,
+                "G": 0.0,
+                "gamma": 0.0,
+            }
+            z_model = RMK_plus_1
+        else:
+            raise NotImplementedError(
+                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1']"
+            )
+
+        return coefficients, z_model
 
     def apply_model(self, params, *args):
         """Trick to enable gradient with respect to weights."""
@@ -211,11 +214,45 @@ class BVPModel:
 
         return w
 
-    def compute_coeffs(self, batch, *args):
-        """Computes the coefficient updates for the impedance model."""
-        grads = jax.jacrev(self.losses, argnums=1)(
-            self.parameters(), self.coefficients, batch, *args
+    def update_weights(self, weights):
+        """Updates `self.weights` using running average."""
+
+        running_average = (
+            lambda old_w, new_w: old_w * self.momentum + (1 - self.momentum) * new_w
         )
+        self.weights = tree_map(running_average, self.weights, weights)
+
+    def grad_coeffs(self, dat_batch, dom_batch, bnd_batch):
+        """Computes the gradient of the loss w.r.t. the coefficients."""
+        grads = jax.jacrev(self.losses, argnums=1)(
+            self.parameters(), self.coefficients, dat_batch, dom_batch, bnd_batch
+        )
+
+        coeff_keys = self.coefficients.keys()
+        subdicts = [grads[key] for key in grads.keys()]
+
+        sum_grad_dict = {}
+        for key in coeff_keys:
+            sum_grad_dict[key] = jnp.sum(jnp.stack([d[key] for d in subdicts]))
+
+        return sum_grad_dict
+
+    def update_coeffs(self, sum_grad_dict, opt, opt_state):
+        """Updates the coefficients using the gradient."""
+        updates, opt_state = opt.update(sum_grad_dict, opt_state)
+        coeffs = eqx.apply_updates(self.coefficients, updates)
+
+        # Clip the coefficients if using RMK+1 model
+        if self.impedance_model == RMK_plus_1:
+            coeffs = {
+                "K": jnp.clip(coeffs["K"], 0.0, 1.0),
+                "R_1": jnp.clip(coeffs["R_1"], 0.0, 1.0),
+                "M": jnp.clip(coeffs["M"], 0.0, 1.0),
+                "G": jnp.clip(coeffs["G"], 0.0, 1.0),
+                "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
+            }
+
+        return coeffs, opt_state
 
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Returns the losses of the model."""
@@ -254,11 +291,11 @@ class BVPModel:
         coords = batch
         f, x, y, z = coords.values()
         zpr, zpi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
-        zmr, zmi = self.coefficients["alpha"], self.coefficients["beta"]
+        zmr, zmi = self.impedance_model(coeffs, f * self.fc + self.f0)
 
         return self.criterion(zpr, zmr), self.criterion(zpi, zmi)
 
-    def loss(self, params, weights, coeffs, batches, *args):
+    def compute_loss(self, params, weights, coeffs, batches, *args):
         # Compute losses
         losses = self.losses(params, coeffs, **batches)
         # Compute weighted loss
