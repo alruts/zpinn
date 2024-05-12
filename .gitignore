@@ -1,0 +1,51 @@
+# Ignore compressed files
+*.zip
+
+# Ignore powerpoints
+*.pptx
+
+# Ignore image files
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.fig
+*.svg
+
+# Ignore audio files
+*.wav
+
+# Ignore hdf5 files
+*.hdf5
+*.h5 
+
+# Ignore pikkle file
+*.pk
+
+# Ignore python related files
+*.pyc
+**/__pycache__/
+
+# Ignore VSCode related files
+**/.vscode/
+
+# Ignore VIM related files
+*.swp
+
+# Ignore MATLAB related files
+*.asv
+
+# Ignore python related files 
+*.pyc
+*.ipynb
+
+# Ignore specific folders 
+**/.pytest_cache/
+**/outputs/
+**/audio/
+**/notebooks/
+**/video/
+**/bin/
+
+# Ignore todo list
+**/todo.txt
