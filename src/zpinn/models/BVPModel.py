@@ -20,15 +20,23 @@ criteria = {
 }
 
 
+# TODO: Add epsilon method,
+# TODO: add exact imposing method,
+# TODO: Add extra class to handle optimizers.
+# TODO: add model evaluation method.
+# TODO: add feed config into this class rather than values.
+
+
 @dataclass
 class BVPModel:
     """Base class for the boundary value problem models."""
 
     model: eqx.Module
     criterion: Callable
-    coefficients: dict
     weights: dict
     momentum: float
+    impedance_model: Callable
+    coefficients: dict
     x0: float
     xc: float
     y0: float
@@ -39,20 +47,12 @@ class BVPModel:
     ac: float
     b0: float
     bc: float
-    impedance_model: Callable
 
-    def __init__(
-        self,
-        model,
-        transforms,
-        impedance_model,
-        criterion="mse",
-        momentum=0.9,
-    ):
+    def __init__(self, model, transforms, config):
         self.model = model
-        self.momentum = momentum
+        self.momentum = config.momentum
         self.weights = self._init_weights()
-        self.coefficients, self.impedance_model = self._init_z(impedance_model)
+        self.coefficients, self.impedance_model = self._init_z(config.impedance_model)
         (
             self.x0,
             self.xc,
@@ -69,7 +69,7 @@ class BVPModel:
         ) = self._init_transforms(transforms)
 
         # Initialize the loss criterion
-        self.criterion = criteria[criterion]
+        self.criterion = criteria[config.criterion]
 
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
