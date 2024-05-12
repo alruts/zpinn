@@ -122,6 +122,16 @@ class ModifiedSIREN(eqx.Module):
             )
         self.layers.append(last_layer)
 
+    def params(self):
+        """Returns the parameters of the model."""
+        is_eqx_linear = lambda x: isinstance(x, eqx.nn.Linear)
+        params = [
+            x.weight
+            for x in jax.tree_util.tree_leaves(self, is_leaf=is_eqx_linear)
+            if is_eqx_linear(x)
+        ]
+        return params
+
     def __call__(self, *args):
         """Forward pass."""
         x = jnp.array([*args])  # Stack the input variables
