@@ -1,13 +1,11 @@
 import logging
 import pickle
 import sys
-from functools import partial
 
 import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
 import torch
-from jax import pmap, local_device_count
 from jax.tree_util import tree_map
 from torch.utils import data as torchdata
 from torch.utils.data import DataLoader, Dataset
@@ -158,7 +156,6 @@ class DomainSampler(BaseSampler):
         else:
             raise ValueError(f"Invalid distribution: {distribution}")
 
-    # @partial(pmap, static_broadcasted_argnums=(0,))
     def gen_data(self, key):
         key, *subkeys = jrandom.split(key, num=len(self.limits) + 1)
         data = {}
@@ -167,7 +164,8 @@ class DomainSampler(BaseSampler):
             data[axis] = self._sample_axis(
                 subkeys.pop(0), axis_min, axis_max, self.distributions[axis]
             )
-            data[axis] = transform(data[axis], *self.transforms[axis])
+            t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
+            data[axis] = transform(data[axis], *t.values())
 
         return data
 
@@ -181,7 +179,7 @@ class BoundarySampler(BaseSampler):
         limits (dict):
             Dictionary containing the limits of the points in each axis (min, max)
         transforms (dict):
-            Dictionary containing the transforms for the points (shift, scale)
+            Dictionary containing the transforms for the points 
         distributions (dict):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
@@ -204,7 +202,6 @@ class BoundarySampler(BaseSampler):
         else:
             raise ValueError(f"Invalid distribution: {distribution}")
 
-    # @partial(pmap, static_broadcasted_argnums=(0,))
     def gen_data(self, key):
         key, *subkeys = jrandom.split(key, num=len(self.limits) + 1)
         data = {}
@@ -213,7 +210,8 @@ class BoundarySampler(BaseSampler):
             data[axis] = self._sample_axis(
                 subkeys.pop(0), axis_min, axis_max, self.distributions[axis]
             )
-            data[axis] = transform(data[axis], *self.transforms[axis])
+            t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
+            data[axis] = transform(data[axis], *t.values())
 
         # check if x and y are grid
         if self.distributions["x"] == "grid" and self.distributions["y"] == "grid":
