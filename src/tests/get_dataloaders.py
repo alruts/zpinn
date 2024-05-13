@@ -12,23 +12,6 @@ def get_dataloaders(data_path=data_path):
     dataset = PressureDataset(data_path)
     dataloader = dataset.get_dataloader(batch_size=16, shuffle=True)
     data_iterator = iter(dataloader)
-    
-    dom_sampler = DomainSampler(
-        batch_size=16,
-        limits=dict(x=(0, 1), y=(0, 1), z=(0, 1), f=(0, 1)),
-        distributions=dict(x="uniform", y="uniform", z="uniform", f="uniform"),
-        transforms=dataset.transforms,
-    )
-    dom_iterator = iter(dom_sampler)
-
-    bnd_sampler = BoundarySampler(
-        batch_size=16,
-        limits=dict(x=(0, 1), y=(0, 1), z=(0, 0), f=(0, 1)),
-        distributions=dict(x="grid", y="grid", z="uniform", f="uniform"),
-        transforms=dataset.transforms,
-    )
-    bnd_iterator = iter(bnd_sampler)
-
     transforms = dict(
         x0=dataset.transforms["x"][0],
         xc=dataset.transforms["x"][1],
@@ -43,4 +26,21 @@ def get_dataloaders(data_path=data_path):
         b0=dataset.transforms["imag_pressure"][0],
         bc=dataset.transforms["imag_pressure"][1],
     )
+
+    dom_sampler = DomainSampler(
+        batch_size=16,
+        limits=dict(x=(0, 1), y=(0, 1), z=(0, 1), f=(0, 1)),
+        distributions=dict(x="uniform", y="uniform", z="uniform", f="uniform"),
+        transforms=transforms,
+    )
+    dom_iterator = iter(dom_sampler)
+
+    bnd_sampler = BoundarySampler(
+        batch_size=16,
+        limits=dict(x=(0, 1), y=(0, 1), z=(0, 0), f=(0, 1)),
+        distributions=dict(x="grid", y="grid", z="uniform", f="uniform"),
+        transforms=transforms,
+    )
+    bnd_iterator = iter(bnd_sampler)
+
     return data_iterator, dom_iterator, bnd_iterator, transforms
