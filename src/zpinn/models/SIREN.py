@@ -42,6 +42,7 @@ class SIREN(eqx.Module):
         first_omega_0=30,
         hidden_omega_0=30.0,
         key=jrandom.PRNGKey(0),
+        **kwargs,
     ):
         keys = jax.random.split(key, hidden_layers + 2)
         first_key, *hidden_keys, last_key = keys

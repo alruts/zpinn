@@ -43,7 +43,6 @@ class ModifiedSIREN(eqx.Module):
 
     def __init__(
         self,
-        key,
         in_features,
         hidden_features,
         hidden_layers,
@@ -51,6 +50,8 @@ class ModifiedSIREN(eqx.Module):
         outermost_linear=False,
         first_omega_0=30,
         hidden_omega_0=30.0,
+        key=jrandom.PRNGKey(0),
+        **kwargs,
     ):
         last_key, *keys = jax.random.split(key, hidden_layers + 4)
         keys_iter = iter(keys)
