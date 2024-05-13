@@ -5,14 +5,13 @@ import jax.numpy as jnp
 from dataclasses import dataclass
 from typing import Callable
 
-
 from jax.tree_util import tree_map, tree_leaves, tree_reduce
-from jax import vmap, grad
+from jax import vmap, grad, lax
 
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
 from zpinn.impedance_models import RMK_plus_1, constant_impedance
-from zpinn.utils import flatten_pytree
+from zpinn.utils import flatten_pytree, transform
 
 criteria = {
     "mse": lambda x, y: jnp.mean((x - y) ** 2),
@@ -20,29 +19,30 @@ criteria = {
 }
 
 
+# TODO: add model evaluation method.
 # TODO: Add epsilon method,
 # TODO: add exact imposing method,
 # TODO: Add extra class to handle optimizers.
-# TODO: add model evaluation method.
 # TODO: add feed config into this class rather than values.
 
 
-@dataclass
 class BVPModel:
     """Base class for the boundary value problem models."""
 
     model: eqx.Module
     criterion: Callable
-    weights: dict
     momentum: float
     impedance_model: Callable
-    coefficients: dict
+    init_coeffs: dict
+    init_weights: dict
     x0: float
     xc: float
     y0: float
     yc: float
     z0: float
     zc: float
+    f0: float
+    fc: float
     a0: float
     ac: float
     b0: float
@@ -51,8 +51,8 @@ class BVPModel:
     def __init__(self, model, transforms, config):
         self.model = model
         self.momentum = config.momentum
-        self.weights = self._init_weights()
-        self.coefficients, self.impedance_model = self._init_z(config.impedance_model)
+        self.init_weights = self._init_weights()
+        self.init_coeffs, self.impedance_model = self._init_z(config.impedance_model)
         (
             self.x0,
             self.xc,
@@ -70,6 +70,17 @@ class BVPModel:
 
         # Initialize the loss criterion
         self.criterion = criteria[config.criterion]
+
+        # predict over grid
+        self.p_pred_fn = vmap(
+            vmap(self.p_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )
+        self.uz_pred_fn = vmap(
+            vmap(self.uz_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )
+        self.z_pred_fn = vmap(
+            vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )
 
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
@@ -114,6 +125,11 @@ class BVPModel:
 
         return coefficients, z_model
 
+    def replace(self, **kwargs):
+        """Creates a new instance of the class with updated attributes."""
+        cl = self.__class__
+        return cl(**{**self.__dict__, **kwargs})
+
     def apply_model(self, params, *args):
         """Trick to enable gradient with respect to weights."""
         get_params = lambda m: m.params()
@@ -130,8 +146,8 @@ class BVPModel:
         ]
         return params
 
-    def p_net(self, params, *args, part=None):
-        """Pressure network."""
+    def psi_net(self, params, *args, part=None):
+        """Nondimensionalized pressure network."""
         p = self.apply_model(params, *args)
 
         if part == "real":
@@ -141,11 +157,19 @@ class BVPModel:
         else:
             return p[0], p[1]
 
+    def p_net(self, params, *args):
+        """Pressure network."""
+        x, y, z, f = args
+        pr, pi = self.psi_net(params, *args)
+        pr = pr * self.ac + self.a0
+        pi = pi * self.bc + self.b0
+        return pr, pi
+
     def r_net(self, params, *args):
         """PDE residual network."""
         x, y, z, f = args
         k = (2 * jnp.pi * (f * self.fc + self.f0)) / (_c0)
-        pr_pred, pi_pred = self.p_net(params, *args)
+        pr_pred, pi_pred = self.psi_net(params, *args)
 
         pr = pr_pred * self.ac + self.a0
         pi = pi_pred * self.bc + self.b0
@@ -153,38 +177,57 @@ class BVPModel:
         norm = self.xc * self.yc * self.zc
 
         # compute real part of the Laplacian
-        p_xx = grad(grad(self.p_net, argnums=1), argnums=1)(params, *args, part="real")
+        p_xx = grad(grad(self.psi_net, argnums=1), argnums=1)(
+            params, *args, part="real"
+        )
         p_xx /= self.xc**2
-        p_yy = grad(grad(self.p_net, argnums=2), argnums=2)(params, *args, part="real")
+        p_yy = grad(grad(self.psi_net, argnums=2), argnums=2)(
+            params, *args, part="real"
+        )
         p_yy /= self.yc**2
-        p_zz = grad(grad(self.p_net, argnums=3), argnums=3)(params, *args, part="real")
+        p_zz = grad(grad(self.psi_net, argnums=3), argnums=3)(
+            params, *args, part="real"
+        )
         p_zz /= self.zc**2
         Lr = p_xx + p_yy + p_zz
 
         # compute imaginry part of the Laplacian
-        p_xx = grad(grad(self.p_net, argnums=1), argnums=1)(params, *args, part="imag")
+        p_xx = grad(grad(self.psi_net, argnums=1), argnums=1)(
+            params, *args, part="imag"
+        )
         p_xx /= self.xc**2
-        p_yy = grad(grad(self.p_net, argnums=2), argnums=2)(params, *args, part="imag")
+        p_yy = grad(grad(self.psi_net, argnums=2), argnums=2)(
+            params, *args, part="imag"
+        )
         p_yy /= self.yc**2
-        p_zz = grad(grad(self.p_net, argnums=3), argnums=3)(params, *args, part="imag")
+        p_zz = grad(grad(self.psi_net, argnums=3), argnums=3)(
+            params, *args, part="imag"
+        )
         p_zz /= self.zc**2
         Li = p_xx + p_yy + p_zz
 
         return norm * (Lr + k**2 * pr), norm * (Li + k**2 * pi)
 
-    def z_net(self, params, *args):
-        """Boundary condition network."""
+    def uz_net(self, params, *args):
+        """Normal particle velocity network."""
         x, y, z, f = args
 
-        p_zr = grad(self.p_net, argnums=1)(params, *args, part="real")
+        p_zr = grad(self.psi_net, argnums=1)(params, *args, part="real")
         p_zr = p_zr * self.ac / self.xc
-        p_zi = grad(self.p_net, argnums=2)(params, *args, part="imag")
+        p_zi = grad(self.psi_net, argnums=2)(params, *args, part="imag")
         p_zi = p_zi * self.bc / self.yc
 
-        u_cplx = 1j * 2 * jnp.pi * (f * self.fc + self.f0) * _rho0
-        u_cplx *= p_zr + 1j * p_zi
+        uz = 1j * 2 * jnp.pi * (f * self.fc + self.f0) * _rho0
+        uz *= p_zr + 1j * p_zi
 
-        pr, pi = self.p_net(params, *args)
+        return uz.real, uz.imag
+
+    def z_net(self, params, *args):
+        """Boundary condition network."""
+        uzr, uzi = self.uz_net(params, *args)
+        u_cplx = uzr + 1j * uzi
+
+        pr, pi = self.psi_net(params, *args)
         pr = pr * self.ac + self.a0
         pi = pi * self.bc + self.b0
         p_cplx = pr + 1j * pi
@@ -192,12 +235,13 @@ class BVPModel:
         z = p_cplx / u_cplx
         return z.real, z.imag
 
-    def compute_weights(self, dat_batch, dom_batch, bnd_batch):
+    @eqx.filter_jit
+    def compute_weights(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Computes the lambda weights for each loss."""
 
         # Compute the gradient of each loss w.r.t. the parameters
         grads = jax.jacrev(self.losses, argnums=0)(
-            self.parameters(), self.coefficients, dat_batch, dom_batch, bnd_batch
+            params, coeffs, dat_batch, dom_batch, bnd_batch
         )
 
         # Compute the grad norm of each loss
@@ -214,21 +258,26 @@ class BVPModel:
 
         return w
 
-    def update_weights(self, weights):
-        """Updates `self.weights` using running average."""
-
+    @eqx.filter_jit
+    def update_weights(self, weights, **kwargs):
+        """Updates `weights` using running average with momentum."""
+        #! figure this out
         running_average = (
             lambda old_w, new_w: old_w * self.momentum + (1 - self.momentum) * new_w
         )
-        self.weights = tree_map(running_average, self.weights, weights)
+        weights = tree_map(running_average, self.init_weights, weights)
+        weights = lax.stop_gradient(weights)
 
-    def grad_coeffs(self, dat_batch, dom_batch, bnd_batch):
+        return weights
+
+    @eqx.filter_jit
+    def grad_coeffs(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Computes the gradient of the loss w.r.t. the coefficients."""
         grads = jax.jacrev(self.losses, argnums=1)(
-            self.parameters(), self.coefficients, dat_batch, dom_batch, bnd_batch
+            params, coeffs, dat_batch, dom_batch, bnd_batch
         )
 
-        coeff_keys = self.coefficients.keys()
+        coeff_keys = self.init_coeffs.keys()
         subdicts = [grads[key] for key in grads.keys()]
 
         sum_grad_dict = {}
@@ -237,23 +286,15 @@ class BVPModel:
 
         return sum_grad_dict
 
-    def update_coeffs(self, sum_grad_dict, opt, opt_state):
-        """Updates the coefficients using the gradient."""
-        updates, opt_state = opt.update(sum_grad_dict, opt_state)
-        coeffs = eqx.apply_updates(self.coefficients, updates)
+    # @eqx.filter_jit
+    # def update_coeffs(self, sum_grad_dict, opt, opt_state):
+    #     """Updates the coefficients using the gradient."""
+    #     updates, opt_state = opt.update(sum_grad_dict, opt_state)
+    #     coeffs = eqx.apply_updates(self.init_coeffs, updates)
 
-        # Clip the coefficients if using RMK+1 model
-        if self.impedance_model == RMK_plus_1:
-            coeffs = {
-                "K": jnp.clip(coeffs["K"], 0.0, 1.0),
-                "R_1": jnp.clip(coeffs["R_1"], 0.0, 1.0),
-                "M": jnp.clip(coeffs["M"], 0.0, 1.0),
-                "G": jnp.clip(coeffs["G"], 0.0, 1.0),
-                "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
-            }
+    #     return coeffs, opt_state
 
-        return coeffs, opt_state
-
+    @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Returns the losses of the model."""
         data_loss_re, data_loss_im = self.p_loss(params, dat_batch)
@@ -272,7 +313,7 @@ class BVPModel:
         """Data loss."""
         coords, gt = batch  # unpack the data batch
         f, x, y, z = coords.values()
-        pr_pred, pi_pred = vmap(self.p_net, in_axes=(None, *[0] * 4))(
+        pr_pred, pi_pred = vmap(self.psi_net, in_axes=(None, *[0] * 4))(
             params, *(x, y, z, f)
         )
         pr_target, pi_target = gt["real_pressure"], gt["imag_pressure"]
@@ -295,11 +336,172 @@ class BVPModel:
 
         return self.criterion(zpr, zmr), self.criterion(zpi, zmi)
 
-    def compute_loss(self, params, weights, coeffs, batches, *args):
+    @eqx.filter_jit
+    def compute_loss(self, params, weights, coeffs, dat_batch, dom_batch, bnd_batch):
         # Compute losses
-        losses = self.losses(params, coeffs, **batches)
+        losses = self.losses(params, coeffs, dat_batch, dom_batch, bnd_batch)
         # Compute weighted loss
         weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
         # Sum weighted losses
         loss = tree_reduce(lambda x, y: x + y, weighted_losses)
         return loss
+
+    @eqx.filter_jit
+    def step(self, params, weights, coeffs, opt_states, optimizers, batch):
+
+        # --- Update the parameters ---
+        loss, grads = jax.value_and_grad(self.compute_loss)(
+            params, weights, coeffs, **batch
+        )
+        updates, opt_states["params"] = optimizers["params"].update(
+            grads, opt_states["params"]
+        )
+        params = eqx.apply_updates(params, updates)
+
+        # --- Update the coefficients ---
+        grads = self.grad_coeffs(params, coeffs, **batch)
+        updates, opt_states["coeffs"] = optimizers["coeffs"].update(
+            grads, opt_states["coeffs"]
+        )
+        coeffs = eqx.apply_updates(self.init_coeffs, updates)
+
+        # Clip the coefficients if using RMK+1 model
+        if self.impedance_model == RMK_plus_1:
+            coeffs = {
+                "K": jnp.clip(coeffs["K"], 0.0, 1.0),
+                "R_1": jnp.clip(coeffs["R_1"], 0.0, 1.0),
+                "M": jnp.clip(coeffs["M"], 0.0, 1.0),
+                "G": jnp.clip(coeffs["G"], 0.0, 1.0),
+                "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
+            }
+
+        # --- Update the weights ---
+        weights = self.update_weights(weights)
+
+        return params, weights, coeffs, opt_states
+
+
+from matplotlib import pyplot as plt
+
+
+class BVPEvaluator:
+    def __init__(self, config, bvp, writer):
+        self.config = config
+        self.bvp = bvp
+        self.writer = writer
+
+        # Initialize the layout
+        # self._init_layout()
+
+    def log_losses(self, params, coeffs, batch, step):
+        losses = self.bvp.losses(params, coeffs, **batch)
+
+        for key, values in losses.items():
+            self.writer.add_scalar(key, values, step)
+
+    def log_weights(self, weights, step):
+        for key, values in weights.items():
+            self.writer.add_scalar(key, values, step)
+
+    def log_coeffs(self, coeffs, step):
+        for key, values in coeffs.items():
+            self.writer.add_scalar(key, values, step)
+
+    def log_grads(self, params, coeffs, batch, step):
+        grads = jax.jacrev(self.losses, argnums=0)(params, coeffs, **batch)
+
+        for key, value in grads.items():
+            flattened_grad = flatten_pytree(value)
+            grad_norm = jnp.linalg.norm(flattened_grad)
+            self.writer.add_histogram(key, grad_norm, step)
+
+    # def log_errors(self, params, ref):
+    #     p_pred = self.bvp.p_pred_fn(params, *(grid.values()))
+    #     uz_pred = self.bvp.uz_pred_fn(params, *(grid.values()))
+    #     z_pred = self.bvp.z_pred_fn(params, *(grid.values()))
+
+    def log_preds(self, params, grid):
+        p_pred = self.bvp.p_pred_fn(params, *(grid.values()))
+        uz_pred = self.bvp.uz_pred_fn(params, *(grid.values()))
+        z_pred = self.bvp.z_pred_fn(params, *(grid.values()))
+
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(p_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/p", plt.gcf())
+        plt.close()
+
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(uz_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/uz", plt.gcf())
+        plt.close()
+
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(z_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/Zn", plt.gcf())
+        plt.close()
+
+    def __call__(self, params, coeffs, weights, batch, step, ref_grid, ref, *args):
+
+        # TODO: add u_ref, p_ref, z_ref and compute l2 loss
+        # TODO: make sure that the eval grid is the same as the ref grid
+        # alternatively, the ref could include coordinates and the eval grid could be computed from the ref grid
+
+        if self.config.logging.log_losses:
+            self.log_losses(params, coeffs, batch, step)
+
+        if self.config.logging.log_weights:
+            self.log_weights(weights, step)
+
+        if self.config.logging.log_grads:
+            self.log_grads(params, coeffs, batch, step)
+
+        if self.config.logging.log_errors:
+            self.log_errors(params, ref)
+
+        if self.config.logging.log_preds:
+            # Transform the grid
+            grid = {}
+            for axis in self.config.logging.eval_grid.keys():
+                t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
+                grid[axis] = transform(grid[axis], *t.values())
+
+            self.log_preds(params, grid)
+
+        return self.writer
+
+    # def _init_layout(self):
+    #     layout = dict(FIGS=dict())
+    #     # Losses
+    #     layout["FIGS"]["Loss/PDE"] = [
+    #         "Multiline",
+    #         ["Loss/PDE/" + key for key in self.bvp.weights.keys() if "pde" in key],
+    #     ]
+    #     layout["FIGS"]["Loss/BC"] = [
+    #         "Multiline",
+    #         ["Loss/BC/" + key for key in self.bvp.weights.keys() if "bc" in key],
+    #     ]
+    #     layout["FIGS"]["Loss/Data"] = [
+    #         "Multiline",
+    #         ["Loss/Data/" + key for key in self.bvp.weights.keys() if "dat" in key],
+    #     ]
+
+    #     # Weights
+    #     layout["FIGS"]["Weights/PDE"] = [
+    #         "Multiline",
+    #         ["Weights/PDE/" + key for key in self.bvp.weights.keys() if "pde" in key],
+    #     ]
+    #     layout["FIGS"]["Weights/BC"] = [
+    #         "Multiline",
+    #         ["Weights/BC/" + key for key in self.bvp.weights.keys() if "bc" in key],
+    #     ]
+    #     layout["FIGS"]["Weights/Data"] = [
+    #         "Multiline",
+    #         ["Weights/Data/" + key for key in self.bvp.weights.keys() if "dat" in key],
+    #     ]
+
+    #     # Coefficients
+    #     layout["FIGS"]["Coeffs"] = [
+    #         "Multiline",
+    #         ["Coeffs/" + key for key in self.bvp.coefficients.keys()],
+    #     ]
+    #     self.writer.add_custom_scalars(layout)

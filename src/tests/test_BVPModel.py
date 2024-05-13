@@ -53,7 +53,7 @@ def test_fwd_pass_p_net():
                 config=config,
             )
 
-            p = bvp.p_net(bvp.parameters(), *([0.0] * 4))
+            p = bvp.psi_net(bvp.parameters(), *([0.0] * 4))
 
             assert len(p) == 2
             assert type(p) == tuple
@@ -143,7 +143,7 @@ def test_z_loss():
                 config=config,
             )
 
-            l = bvp.z_loss(bvp.parameters(), bvp.coefficients, next(bnd_iterator))
+            l = bvp.z_loss(bvp.parameters(), bvp.init_coeffs, next(bnd_iterator))
 
             assert len(l) == 2
             assert type(l) == tuple
@@ -168,7 +168,7 @@ def test_compute_loss():
             )
 
             loss = bvp.compute_loss(
-                bvp.parameters(), bvp.weights, bvp.coefficients, batches
+                bvp.parameters(), bvp.init_weights, bvp.init_coeffs, **batches
             )
             assert loss.dtype == jnp.float32
             assert loss > 0
@@ -183,14 +183,39 @@ def test_compute_weights():
                 transforms=transforms,
                 config=config,
             )
-            dat_batch = next(data_iterator)
-            dom_batch = next(dom_iterator)
-            bnd_batch = next(bnd_iterator)
-
-            weights = bvp.compute_weights(dat_batch, dom_batch, bnd_batch)
+            batch = dict(
+                dat_batch=next(data_iterator),
+                dom_batch=next(dom_iterator),
+                bnd_batch=next(bnd_iterator),
+            )
+            params, coeffs = bvp.parameters(), bvp.init_coeffs
+            weights = bvp.compute_weights(params, coeffs, **batch)
             assert len(weights) == 6  # Number of losses
             assert all(w.dtype == jnp.float32 for w in weights.values())
             assert all(w > 0 for w in weights.values())
+
+
+def test_update_weights():
+    for model in models:
+        for impedance_model in impedance_models:
+            config.impedance_model = impedance_model
+            bvp = BVPModel(
+                model=model,
+                transforms=transforms,
+                config=config,
+            )
+            batch = dict(
+                dat_batch=next(data_iterator),
+                dom_batch=next(dom_iterator),
+                bnd_batch=next(bnd_iterator),
+            )
+
+            params, coeffs = bvp.parameters(), bvp.init_coeffs
+            weights = bvp.compute_weights(params, coeffs, **batch)
+            updated_weights = bvp.update_weights(weights)
+            assert len(updated_weights) == 6  # Number of losses
+            assert all(w.dtype == jnp.float32 for w in updated_weights.values())
+            assert all(w > 0 for w in updated_weights.values())
 
 
 def test_losses():
@@ -205,7 +230,7 @@ def test_losses():
 
             losses = bvp.losses(
                 bvp.parameters(),
-                bvp.coefficients,
+                bvp.init_coeffs,
                 next(data_iterator),
                 next(dom_iterator),
                 next(bnd_iterator),
@@ -225,11 +250,16 @@ def test_grad_coeffs():
                 transforms=transforms,
                 config=config,
             )
-            coeffs = bvp.grad_coeffs(
-                next(data_iterator), next(dom_iterator), next(bnd_iterator)
+            batch = dict(
+                dat_batch=next(data_iterator),
+                dom_batch=next(dom_iterator),
+                bnd_batch=next(bnd_iterator),
             )
+            params, coeffs = bvp.parameters(), bvp.init_coeffs
+            coeffs = bvp.grad_coeffs(params, coeffs, **batch)
+            
             assert len(coeffs) == len(
-                bvp.coefficients
+                bvp.init_coeffs
             )  # Number of impedance coefficients
             assert all(c.dtype == jnp.float32 for c in coeffs.values())
 
