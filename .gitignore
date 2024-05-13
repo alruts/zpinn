@@ -42,6 +42,7 @@
 # Ignore specific folders 
 **/.pytest_cache/
 **/outputs/
+**/tensorboards/
 **/audio/
 **/notebooks/
 **/video/
