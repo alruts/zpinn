@@ -1,12 +1,12 @@
 import sys
+from typing import Callable
+
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from dataclasses import dataclass
-from typing import Callable
-
-from jax.tree_util import tree_map, tree_leaves, tree_reduce
-from jax import vmap, grad, lax
+from jax import grad, lax, vmap
+from jax.tree_util import tree_leaves, tree_map, tree_reduce
+from matplotlib import pyplot as plt
 
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
@@ -19,11 +19,10 @@ criteria = {
 }
 
 
-# TODO: add model evaluation method.
 # TODO: Add epsilon method,
 # TODO: add exact imposing method,
-# TODO: Add extra class to handle optimizers.
-# TODO: add feed config into this class rather than values.
+# TODO: (EXTRA) Add extra class to handle optimizers.
+# TODO: (EXTRA) Add "custom scalars" to tensorboard logger.
 
 
 class BVPModel:
@@ -33,6 +32,7 @@ class BVPModel:
     criterion: Callable
     momentum: float
     impedance_model: Callable
+    is_normalized: bool
     init_coeffs: dict
     init_weights: dict
     x0: float
@@ -50,9 +50,11 @@ class BVPModel:
 
     def __init__(self, model, transforms, config):
         self.model = model
-        self.momentum = config.momentum
-        self.init_weights = self._init_weights()
-        self.init_coeffs, self.impedance_model = self._init_z(config.impedance_model)
+        self.momentum = config.weighting.momentum
+        self.init_weights = dict(config.weighting.initial_weights)
+        self.init_coeffs = dict(config.impedance_model.initial_guess)
+
+        self.impedance_model = self._init_z_model(config)
         (
             self.x0,
             self.xc,
@@ -68,8 +70,10 @@ class BVPModel:
             self.bc,
         ) = self._init_transforms(transforms)
 
+        self.is_normalized = config.impedance_model.normalized
+
         # Initialize the loss criterion
-        self.criterion = criteria[config.criterion]
+        self.criterion = criteria[config.training.criterion]
 
         # predict over grid
         self.p_pred_fn = vmap(
@@ -92,43 +96,19 @@ class BVPModel:
         b0, bc = tfs["b0"], tfs["bc"]
         return x0, xc, y0, yc, z0, zc, f0, fc, a0, ac, b0, bc
 
-    def _init_weights(self):
-        """Initialize the weights for each loss."""
-        return {
-            "data_re": 1.0,
-            "data_im": 1.0,
-            "pde_re": 1.0,
-            "pde_im": 1.0,
-            "bc_re": 1.0,
-            "bc_im": 1.0,
-        }  #! add config for this
-
-    def _init_z(self, impedance_model):
+    def _init_z_model(self, config):
         # Initialize the coefficients based on the impedance model
-        if impedance_model == "single_freq":
-            coefficients = {"alpha": 1.0, "beta": -1.0}
+        if config.impedance_model.type == "single_freq":
             z_model = constant_impedance
 
-        elif impedance_model == "RMK+1":
-            coefficients = {
-                "K": 0.0,
-                "R_1": 0.0,
-                "M": 0.0,
-                "G": 0.0,
-                "gamma": 0.0,
-            }
+        elif config.impedance_model.type == "RMK+1":
             z_model = RMK_plus_1
         else:
             raise NotImplementedError(
                 "Impedance model not implemented. Choose from ['single_freq', 'RMK+1']"
             )
 
-        return coefficients, z_model
-
-    def replace(self, **kwargs):
-        """Creates a new instance of the class with updated attributes."""
-        cl = self.__class__
-        return cl(**{**self.__dict__, **kwargs})
+        return z_model
 
     def apply_model(self, params, *args):
         """Trick to enable gradient with respect to weights."""
@@ -171,68 +151,69 @@ class BVPModel:
         k = (2 * jnp.pi * (f * self.fc + self.f0)) / (_c0)
         pr_pred, pi_pred = self.psi_net(params, *args)
 
-        pr = pr_pred * self.ac + self.a0
-        pi = pi_pred * self.bc + self.b0
-
-        norm = self.xc * self.yc * self.zc
-
-        # compute real part of the Laplacian
+        # compute real part
         p_xx = grad(grad(self.psi_net, argnums=1), argnums=1)(
             params, *args, part="real"
         )
-        p_xx /= self.xc**2
+        p_xx *= self.yc**2 * self.zc**2
         p_yy = grad(grad(self.psi_net, argnums=2), argnums=2)(
             params, *args, part="real"
         )
-        p_yy /= self.yc**2
+        p_yy *= self.xc**2 * self.zc**2
         p_zz = grad(grad(self.psi_net, argnums=3), argnums=3)(
             params, *args, part="real"
         )
-        p_zz /= self.zc**2
-        Lr = p_xx + p_yy + p_zz
+        p_zz *= self.xc**2 * self.yc**2
+        Lr = (p_xx + p_yy + p_zz) * self.ac
+        rr = Lr + (k * self.xc * self.yc * self.zc) ** 2 * (pr_pred * self.ac + self.a0)
 
-        # compute imaginry part of the Laplacian
+        # compute imaginary part
         p_xx = grad(grad(self.psi_net, argnums=1), argnums=1)(
             params, *args, part="imag"
         )
-        p_xx /= self.xc**2
+        p_xx *= self.yc**2 * self.zc**2
         p_yy = grad(grad(self.psi_net, argnums=2), argnums=2)(
             params, *args, part="imag"
         )
-        p_yy /= self.yc**2
+        p_yy *= self.xc**2 * self.zc**2
         p_zz = grad(grad(self.psi_net, argnums=3), argnums=3)(
             params, *args, part="imag"
         )
-        p_zz /= self.zc**2
-        Li = p_xx + p_yy + p_zz
+        p_zz *= self.xc**2 * self.yc**2
+        Li = (p_xx + p_yy + p_zz) * self.bc
+        ri = Li + (k * self.xc * self.yc * self.zc) ** 2 * (pi_pred * self.bc + self.b0)
 
-        return norm * (Lr + k**2 * pr), norm * (Li + k**2 * pi)
+        return rr, ri
 
     def uz_net(self, params, *args):
         """Normal particle velocity network."""
         x, y, z, f = args
 
-        p_zr = grad(self.psi_net, argnums=1)(params, *args, part="real")
-        p_zr = p_zr * self.ac / self.xc
-        p_zi = grad(self.psi_net, argnums=2)(params, *args, part="imag")
-        p_zi = p_zi * self.bc / self.yc
+        # compute the gradient of the pressure w.r.t. z
+        p_zr = grad(self.psi_net, argnums=3)(params, *args, part="real")
+        p_zi = grad(self.psi_net, argnums=3)(params, *args, part="imag")
 
-        uz = 1j * 2 * jnp.pi * (f * self.fc + self.f0) * _rho0
-        uz *= p_zr + 1j * p_zi
+        # apply euler's equation
+        uz = 1 / (1j * 2 * jnp.pi * (f * self.fc + self.f0) * _rho0)
+        uz /= self.zc
+        uz *= self.ac * p_zr + 1j * self.bc * p_zi
 
         return uz.real, uz.imag
 
     def z_net(self, params, *args):
         """Boundary condition network."""
+        # compute the particle velocity
         uzr, uzi = self.uz_net(params, *args)
         u_cplx = uzr + 1j * uzi
 
+        # compute the pressure
         pr, pi = self.psi_net(params, *args)
-        pr = pr * self.ac + self.a0
-        pi = pi * self.bc + self.b0
-        p_cplx = pr + 1j * pi
+        p_cplx = (pr * self.ac + self.a0) + 1j * (pi * self.bc + self.b0)
 
         z = p_cplx / u_cplx
+
+        if self.is_normalized:
+            z /= _rho0 * _c0
         return z.real, z.imag
 
     @eqx.filter_jit
@@ -259,13 +240,12 @@ class BVPModel:
         return w
 
     @eqx.filter_jit
-    def update_weights(self, weights, **kwargs):
+    def update_weights(self, old_w, new_w, **kwargs):
         """Updates `weights` using running average with momentum."""
-        #! figure this out
         running_average = (
             lambda old_w, new_w: old_w * self.momentum + (1 - self.momentum) * new_w
         )
-        weights = tree_map(running_average, self.init_weights, weights)
+        weights = tree_map(running_average, old_w, new_w)
         weights = lax.stop_gradient(weights)
 
         return weights
@@ -285,14 +265,6 @@ class BVPModel:
             sum_grad_dict[key] = jnp.sum(jnp.stack([d[key] for d in subdicts]))
 
         return sum_grad_dict
-
-    # @eqx.filter_jit
-    # def update_coeffs(self, sum_grad_dict, opt, opt_state):
-    #     """Updates the coefficients using the gradient."""
-    #     updates, opt_state = opt.update(sum_grad_dict, opt_state)
-    #     coeffs = eqx.apply_updates(self.init_coeffs, updates)
-
-    #     return coeffs, opt_state
 
     @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
@@ -332,7 +304,9 @@ class BVPModel:
         coords = batch
         f, x, y, z = coords.values()
         zpr, zpi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
-        zmr, zmi = self.impedance_model(coeffs, f * self.fc + self.f0)
+        zmr, zmi = self.impedance_model(
+            coeffs, f * self.fc + self.f0, normalized=self.is_normalized
+        )
 
         return self.criterion(zpr, zmr), self.criterion(zpi, zmi)
 
@@ -347,12 +321,10 @@ class BVPModel:
         return loss
 
     @eqx.filter_jit
-    def step(self, params, weights, coeffs, opt_states, optimizers, batch):
+    def update(self, params, weights, coeffs, opt_states, optimizers, batch):
 
         # --- Update the parameters ---
-        loss, grads = jax.value_and_grad(self.compute_loss)(
-            params, weights, coeffs, **batch
-        )
+        grads = jax.grad(self.compute_loss)(params, weights, coeffs, **batch)
         updates, opt_states["params"] = optimizers["params"].update(
             grads, opt_states["params"]
         )
@@ -375,19 +347,14 @@ class BVPModel:
                 "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
             }
 
-        # --- Update the weights ---
-        weights = self.update_weights(weights)
-
-        return params, weights, coeffs, opt_states
-
-
-from matplotlib import pyplot as plt
+        return params, coeffs, opt_states
 
 
 class BVPEvaluator:
-    def __init__(self, config, bvp, writer):
+    def __init__(self, bvp, transforms, writer, config):
         self.config = config
         self.bvp = bvp
+        self.transforms = transforms
         self.writer = writer
 
         # Initialize the layout
@@ -396,54 +363,71 @@ class BVPEvaluator:
     def log_losses(self, params, coeffs, batch, step):
         losses = self.bvp.losses(params, coeffs, **batch)
 
-        for key, values in losses.items():
-            self.writer.add_scalar(key, values, step)
+        for key, val in losses.items():
+            self.writer.add_scalar("Loss/" + key, val.item(), step)
+
+        # log the total loss
+        self.writer.add_scalar("Loss/Total", sum(losses.values()).item(), step)
 
     def log_weights(self, weights, step):
-        for key, values in weights.items():
-            self.writer.add_scalar(key, values, step)
+        for key, val in weights.items():
+            self.writer.add_scalar("Weights/" + key, val.item(), step)
 
     def log_coeffs(self, coeffs, step):
-        for key, values in coeffs.items():
-            self.writer.add_scalar(key, values, step)
+        for key, val in coeffs.items():
+            self.writer.add_scalar("Coeffs/" + key, val.item(), step)
 
     def log_grads(self, params, coeffs, batch, step):
-        grads = jax.jacrev(self.losses, argnums=0)(params, coeffs, **batch)
+        grads = jax.jacrev(self.bvp.losses, argnums=0)(params, coeffs, **batch)
 
         for key, value in grads.items():
             flattened_grad = flatten_pytree(value)
             grad_norm = jnp.linalg.norm(flattened_grad)
-            self.writer.add_histogram(key, grad_norm, step)
+            self.writer.add_histogram(key, grad_norm.item(), step)
 
-    # def log_errors(self, params, ref):
+    # def log_errors(self, params, ref, step):
     #     p_pred = self.bvp.p_pred_fn(params, *(grid.values()))
     #     uz_pred = self.bvp.uz_pred_fn(params, *(grid.values()))
     #     z_pred = self.bvp.z_pred_fn(params, *(grid.values()))
 
-    def log_preds(self, params, grid):
-        p_pred = self.bvp.p_pred_fn(params, *(grid.values()))
-        uz_pred = self.bvp.uz_pred_fn(params, *(grid.values()))
-        z_pred = self.bvp.z_pred_fn(params, *(grid.values()))
+    def log_preds(self, params, grid, step):
+        pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(grid.values()))
+        uzr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(grid.values()))
+        zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(grid.values()))
 
         fig = plt.figure(figsize=(5, 5))
-        plt.imshow(p_pred.T, cmap="jet")
-        self.writer.add_figure("Predictions/p", plt.gcf())
+        plt.imshow(pr_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/pr", plt.gcf(), step)
         plt.close()
 
         fig = plt.figure(figsize=(5, 5))
-        plt.imshow(uz_pred.T, cmap="jet")
-        self.writer.add_figure("Predictions/uz", plt.gcf())
+        plt.imshow(pi_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/pi", plt.gcf(), step)
         plt.close()
 
         fig = plt.figure(figsize=(5, 5))
-        plt.imshow(z_pred.T, cmap="jet")
-        self.writer.add_figure("Predictions/Zn", plt.gcf())
+        plt.imshow(uzr_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/uzr", plt.gcf(), step)
         plt.close()
 
-    def __call__(self, params, coeffs, weights, batch, step, ref_grid, ref, *args):
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(uzi_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/uzi", plt.gcf(), step)
+        plt.close()
+
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(zr_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/zr", plt.gcf(), step)
+        plt.close()
+
+        fig = plt.figure(figsize=(5, 5))
+        plt.imshow(zi_pred.T, cmap="jet")
+        self.writer.add_figure("Predictions/zi", plt.gcf(), step)
+        plt.close()
+
+    def __call__(self, params, coeffs, weights, batch, step, ref_grid, ref):
 
         # TODO: add u_ref, p_ref, z_ref and compute l2 loss
-        # TODO: make sure that the eval grid is the same as the ref grid
         # alternatively, the ref could include coordinates and the eval grid could be computed from the ref grid
 
         if self.config.logging.log_losses:
@@ -452,20 +436,22 @@ class BVPEvaluator:
         if self.config.logging.log_weights:
             self.log_weights(weights, step)
 
+        if self.config.logging.log_coeffs:
+            self.log_coeffs(coeffs, step)
+
         if self.config.logging.log_grads:
             self.log_grads(params, coeffs, batch, step)
 
         if self.config.logging.log_errors:
-            self.log_errors(params, ref)
+            self.log_errors(params, ref, step)
 
         if self.config.logging.log_preds:
             # Transform the grid
-            grid = {}
-            for axis in self.config.logging.eval_grid.keys():
+            for axis in ref_grid:
                 t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
-                grid[axis] = transform(grid[axis], *t.values())
+                ref_grid[axis] = transform(ref_grid[axis], *t.values())
 
-            self.log_preds(params, grid)
+            self.log_preds(params, ref_grid, step)
 
         return self.writer
 
