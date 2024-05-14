@@ -4,7 +4,7 @@ sys.path.append("src")
 from zpinn.dataio import BoundarySampler, DomainSampler, PressureDataset
 
 
-def get_dataloaders(config, custom_transforms=None):
+def get_loaders(config, custom_transforms=None):
     dataset = PressureDataset(config.paths.dataset)
 
     if custom_transforms is not None:
