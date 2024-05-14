@@ -10,29 +10,20 @@ from zpinn.plot.fields import plot_scalar_field_grid, scalar_field
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--experiment_config",
+    "--dataset",
     type=str,
     default=None,
-    help="path to the experiment config file",
-)
-parser.add_argument(
-    "--dataset_config",
-    type=str,
-    default=None,
-    help="path to the experiment config file",
+    help="path to the dataset",
 )
 args = parser.parse_args()
 
-if None in [args.experiment_config, args.dataset_config]:
-    raise ValueError("Please provide a path to the config files")
-
-CONFIG = OmegaConf.load(args.experiment_config)
-CONFIG = OmegaConf.merge(CONFIG, OmegaConf.load(args.dataset_config))
+if args.dataset is None:
+    raise ValueError("Please provide a path to the dataset")
 
 
-def main(cfg=CONFIG):
+def main(path=args.dataset):
     # Load dataset
-    dataset = pd.read_pickle(CONFIG.paths.dataset)
+    dataset = pd.read_pickle(path)
 
     num_images = len(dataset.keys())
     rows = int(num_images**0.5)  # Adjust as needed for desired grid layout
