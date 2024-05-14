@@ -1,14 +1,13 @@
+import argparse
 import logging
 import os
 import sys
 
-import hydra
 import mph
 import pandas as pd
+from omegaconf import OmegaConf
 
 sys.path.append("zpinn")
-from miki import miki
-
 from zpinn.utils import (
     create_tmp_dir,
     delete_dir,
@@ -17,25 +16,40 @@ from zpinn.utils import (
     set_all_config_params,
     set_param,
 )
+from miki import miki
 
-
-@hydra.main(
-    config_path="conf", config_name="inf_baffle.yaml", version_base=hydra.__version__
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--config_path",
+    type=str,
+    default="src\data_gen\conf\inf_baffle_test.yaml",
+    help="path to the config file",
 )
-def gen_data(cfg):
+args = parser.parse_args()
+
+CONFIG = OmegaConf.load(args.config_path)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+
+def gen_data(config=CONFIG):
     # create a temporary directory
-    tmp_dir = create_tmp_dir(cfg.paths.data)
+    tmp_dir = create_tmp_dir(config.paths.data)
 
     # Load config parameters
-    frequencies = cfg.dataset.frequencies
-    model_path = cfg.paths.mph
-    name = cfg.dataset.name
-    thickness = cfg.sample.dimensions.lz
-    flow_resistivity = 41000  # Pa.s/m²
+    frequencies = config.dataset.frequencies
+    model_path = config.paths.mph
+    name = config.dataset.name
+    thickness = config.sample.dimensions.lz
+    flow_resistivity = 41_000  # Pa.s/m²
 
     # Initialize the dataset
     df = pd.DataFrame()
-    filename = os.path.join(cfg.paths.data, "raw", cfg.dataset.name + ".pkl")
+    filename = os.path.join(config.paths.data, "raw", config.dataset.name + ".pkl")
 
     df.attrs = {
         "frequencies": frequencies,
@@ -48,10 +62,10 @@ def gen_data(cfg):
     # Set the parameters
     set_all_config_params(
         model,
-        cfg,
+        config,
         nodes=["sample", "source", "grid", "mesh"],
     )
-
+    
     # Loop over the frequencies and run the simulations
     for frequency in frequencies:
         print(f"Running simulation for {frequency} Hz")
