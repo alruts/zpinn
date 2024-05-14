@@ -160,7 +160,7 @@ def get_all_leaf_nodes(config: DictConfig, path="", nodes=[]):
     return leaf_nodes
 
 
-def set_all_config_params(model: any, cfg: DictConfig, skip_nodes: list[str] = []):
+def set_all_config_params(model: any, cfg: DictConfig, nodes: list[str] = []):
     """Sets all parameters in the config to the COMSOL model.
 
     Args:
@@ -168,7 +168,7 @@ def set_all_config_params(model: any, cfg: DictConfig, skip_nodes: list[str] = [
         cfg (DictConfig): Hydra configuration object
         skip_nodes (list[str]): list of nodes to skip in the configuration
     """
-    leaf_nodes = get_all_leaf_nodes(cfg, nodes=skip_nodes)
+    leaf_nodes = get_all_leaf_nodes(cfg, nodes=nodes)
     for path, value in leaf_nodes:
         set_param(model, path, value)
 
@@ -211,7 +211,6 @@ def load_model(eval_model: str, out_dir: str, model_skeleton: eqx.Module) -> eqx
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
     return model
-
 
 
 def visualize(fn: Callable[[jnp.ndarray], jnp.ndarray], args: jnp.ndarray) -> None:
