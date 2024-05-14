@@ -29,17 +29,17 @@ if args.dataset_config is None:
 
 CONFIG = OmegaConf.load(args.dataset_config)
 
-def main(cfg=CONFIG):
+def main(config=CONFIG):
 
     # sample dimensions
     sample_dimensions = {
-        "lx": cfg.sample.dimensions.lx,
-        "ly": cfg.sample.dimensions.ly,
-        "lz": cfg.sample.dimensions.lz,
+        "lx": config.sample.dimensions.lx,
+        "ly": config.sample.dimensions.ly,
+        "lz": config.sample.dimensions.lz,
     }
     sample_center = (
-        cfg.sample.center.x,
-        cfg.sample.center.y,
+        config.sample.center.x,
+        config.sample.center.y,
         sample_dimensions["lz"] / 2,
     )
     # initialize 3D plot
@@ -48,9 +48,9 @@ def main(cfg=CONFIG):
     # draw the sample
     ax = draw_shoebox(ax, **sample_dimensions, center=sample_center)
 
-    dz = cfg.grid.dz
-    z_start = cfg.sample.dimensions.lz + cfg.grid.delta_height
-    z_stop = z_start + cfg.grid.domain_height
+    dz = config.grid.dz
+    z_start = config.sample.dimensions.lz + config.grid.delta_height
+    z_stop = z_start + config.grid.domain_height
 
     step = int((z_stop - z_start) / dz)
 
@@ -58,11 +58,11 @@ def main(cfg=CONFIG):
     for idx, z in enumerate(linspace(z_start, z_stop, step + 1, endpoint=True)):
         ax = draw_rectangle(
             ax,
-            cfg.grid.domain_side,
-            cfg.grid.domain_side,
+            config.grid.domain_side,
+            config.grid.domain_side,
             center=(
-                cfg.sample.center.x,
-                cfg.sample.center.y,
+                config.sample.center.x,
+                config.sample.center.y,
                 z,
             ),
             draw_height_lines=True,
@@ -75,14 +75,14 @@ def main(cfg=CONFIG):
         ax,
         1,
         1,
-        center=(cfg.sample.center.x, cfg.sample.center.y, cfg.sample.dimensions.lz),
+        center=(config.sample.center.x, config.sample.center.y, config.sample.dimensions.lz),
         color="grey",
         alpha=0.5,
         label="Impedance surface",
     )
 
     ax = draw_source(
-        ax, cfg.source.center.x, cfg.source.center.y, cfg.source.center.z, color="r"
+        ax, config.source.center.x, config.source.center.y, config.source.center.z, color="r"
     )
 
     ax.set_xlabel("$x$ (m)")
