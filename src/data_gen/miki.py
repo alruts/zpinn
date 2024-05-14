@@ -1,5 +1,9 @@
-from math import pi, tanh
-from ..zpinn.constants import _c0, _rho0
+import sys
+
+from numpy import pi, tanh
+
+sys.path.append("src")
+from zpinn.constants import _c0, _rho0
 
 
 def miki(
