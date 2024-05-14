@@ -95,11 +95,13 @@ class PressureDataset(Dataset):
 
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
-        self._x = x if x is not None else self._x
-        self._y = y if y is not None else self._y
-        self._z = z if z is not None else self._z
+        filter_fn = lambda arr, lb, ub: arr[(arr <= ub) & (arr >= lb)]
+        
         self._f = f if f is not None else self._f
-
+        self._x = filter_fn(self._x, *x) if x is not None else self._x
+        self._y = filter_fn(self._y, *y) if y is not None else self._y
+        self._z = filter_fn(self._z, *z) if z is not None else self._z
+        
         self.n_x = len(self._x)
         self.n_y = len(self._y)
         self.n_z = len(self._z)
