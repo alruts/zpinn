@@ -4,17 +4,22 @@ import jax
 import jax.numpy as jnp
 import pytest
 from omegaconf import OmegaConf
+import optax
 
 sys.path.append("src")
 from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.SIREN import SIREN
-from tests.get_dataloaders import get_dataloaders
+from zpinn.get_dataloaders import get_dataloaders
+from zpinn.utils import flatten_pytree
 
 
 # create dummy config
 config = OmegaConf.create(
     {
+        "paths": {
+            "dataset": "C:\\Users\\STNj\\dtu\\thesis\\zpinn\\data\\processed\\inf_baffle.pkl"
+        },
         "model": {
             "in_features": 4,
             "out_features": 2,
@@ -22,9 +27,61 @@ config = OmegaConf.create(
             "hidden_layers": 3,
             "outermost_linear": True,
         },
-        "impedance_model": "single_freq",
-        "criterion": "mse",
-        "momentum": 0.9,
+        "training": {
+            "criterion": "mse",
+        },
+        "impedance_model": {
+            "normalized": True,
+            "type": "single_freq",
+            "initial_guess": dict(),
+        },
+        "weighting": {
+            "momentum": 0.9,
+            "initial_weights": {
+                "data_re": 1.0,
+                "data_im": 1.0,
+                "pde_re": 1.0,
+                "pde_im": 1.0,
+                "bc_re": 1.0,
+                "bc_im": 1.0,
+            },
+        },
+        "batch": {
+            "data": {
+                "batch_size": 10,
+                "shuffle": False,
+            },
+            "domain": {
+                "batch_size": 10,
+                "limits": {
+                    "x": [-1, 1],
+                    "y": [-1, 1],
+                    "z": [-1, 1],
+                    "f": [0, 1],
+                },
+                "distributions": {
+                    "x": "uniform",
+                    "y": "uniform",
+                    "z": "uniform",
+                    "f": "uniform",
+                },
+            },
+            "boundary": {
+                "batch_size": 10,
+                "limits": {
+                    "x": [-1, 1],
+                    "y": [-1, 1],
+                    "z": [-1, 1],
+                    "f": [0, 1],
+                },
+                "distributions": {
+                    "x": "uniform",
+                    "y": "uniform",
+                    "z": "uniform",
+                    "f": "uniform",
+                },
+            },
+        },
     }
 )
 
@@ -39,14 +96,32 @@ impedance_models = [
     "RMK+1",
 ]
 
-# get dataloaders...
-data_iterator, dom_iterator, bnd_iterator, transforms = get_dataloaders()
+# initial guesses for impedance models
+initial_guesses = {
+    "single_freq": {
+        "alpha": 0.0,
+        "beta": 0.0,
+    },
+    "RMK+1": {
+        "K": 0.0,
+        "R_1": 0.0,
+        "M": 0.0,
+        "G": 0.0,
+        "gamma": 0.0,
+    },
+}
 
+# get dataloaders
+data_loader, dom_loader, bnd_loader, transforms = get_dataloaders(config)
+data_iterator = iter(data_loader)
+dom_iterator = iter(dom_loader)
+bnd_iterator = iter(bnd_loader)
 
-def test_fwd_pass_p_net():
+def test_fwd_pass_psi_net():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -64,7 +139,8 @@ def test_fwd_pass_p_net():
 def test_fwd_pass_r_net():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -79,10 +155,30 @@ def test_fwd_pass_r_net():
             assert r[1] is not jnp.nan
 
 
+def test_fwd_pass_uz_net():
+    for model in models:
+        for impedance_model in impedance_models:
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
+            bvp = BVPModel(
+                model=model,
+                transforms=transforms,
+                config=config,
+            )
+
+            uz = bvp.uz_net(bvp.parameters(), *([0.0] * 4))
+
+            assert len(uz) == 2
+            assert type(uz) == tuple
+            assert uz[0] is not jnp.nan
+            assert uz[1] is not jnp.nan
+
+
 def test_fwd_pass_z_net():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -100,7 +196,8 @@ def test_fwd_pass_z_net():
 def test_p_loss():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -113,12 +210,17 @@ def test_p_loss():
             assert type(l) == tuple
             assert l[0] is not jnp.nan
             assert l[1] is not jnp.nan
+            assert l[0] > 0
+            assert l[1] > 0
+            assert l[0] < 100, "Real loss is too high"
+            assert l[1] < 100, "Imaginary loss is too high"
 
 
 def test_r_loss():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -131,12 +233,17 @@ def test_r_loss():
             assert type(l) == tuple
             assert l[0] is not jnp.nan
             assert l[1] is not jnp.nan
+            assert l[0] > 0
+            assert l[1] > 0
+            assert l[1] < 100, "Imaginary loss is too high"
+            assert l[1] < 100, "Imaginary loss is too high"
 
 
 def test_z_loss():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -149,12 +256,17 @@ def test_z_loss():
             assert type(l) == tuple
             assert l[0] is not jnp.nan
             assert l[1] is not jnp.nan
+            assert l[0] > 0
+            assert l[1] > 0
+            assert l[0] < 100, "Real loss is too high"
+            assert l[1] < 100, "Imaginary loss is too high"
 
 
 def test_compute_loss():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -177,7 +289,8 @@ def test_compute_loss():
 def test_compute_weights():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -198,7 +311,8 @@ def test_compute_weights():
 def test_update_weights():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -211,8 +325,9 @@ def test_update_weights():
             )
 
             params, coeffs = bvp.parameters(), bvp.init_coeffs
-            weights = bvp.compute_weights(params, coeffs, **batch)
-            updated_weights = bvp.update_weights(weights)
+            new_w = bvp.compute_weights(params, coeffs, **batch)
+            old_w = bvp.init_weights
+            updated_weights = bvp.update_weights(old_w, new_w)
             assert len(updated_weights) == 6  # Number of losses
             assert all(w.dtype == jnp.float32 for w in updated_weights.values())
             assert all(w > 0 for w in updated_weights.values())
@@ -221,7 +336,8 @@ def test_update_weights():
 def test_losses():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -244,7 +360,8 @@ def test_losses():
 def test_grad_coeffs():
     for model in models:
         for impedance_model in impedance_models:
-            config.impedance_model = impedance_model
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
             bvp = BVPModel(
                 model=model,
                 transforms=transforms,
@@ -257,11 +374,55 @@ def test_grad_coeffs():
             )
             params, coeffs = bvp.parameters(), bvp.init_coeffs
             coeffs = bvp.grad_coeffs(params, coeffs, **batch)
-            
+
             assert len(coeffs) == len(
                 bvp.init_coeffs
             )  # Number of impedance coefficients
             assert all(c.dtype == jnp.float32 for c in coeffs.values())
+
+
+def test_update():
+    for model in models:
+        for impedance_model in impedance_models:
+            config.impedance_model.type = impedance_model
+            config.impedance_model.initial_guess = initial_guesses[impedance_model]
+            bvp = BVPModel(
+                model=model,
+                transforms=transforms,
+                config=config,
+            )
+            batch = dict(
+                dat_batch=next(data_iterator),
+                dom_batch=next(dom_iterator),
+                bnd_batch=next(bnd_iterator),
+            )
+
+            weights = bvp.init_weights
+            params = bvp.parameters()
+            coeffs = bvp.init_coeffs
+
+            optimizers = dict(
+                params=optax.adam(learning_rate=1e-4),
+                coeffs=optax.adam(learning_rate=1e-1),
+            )
+
+            opt_states = dict(
+                params=optimizers["params"].init(params),
+                coeffs=optimizers["coeffs"].init(coeffs),
+            )
+
+            params, coeffs, opt_states = bvp.update(
+                params, weights, coeffs, opt_states, optimizers, batch
+            )
+
+            assert len(params) == len(bvp.parameters())
+            assert len(coeffs) == len(bvp.init_coeffs)
+
+            assert type(coeffs) == dict
+            assert all(c.dtype == jnp.float32 for c in coeffs.values())
+
+            assert type(params) == list
+            assert all(p.dtype == jnp.float32 for p in flatten_pytree(params))
 
 
 if __name__ == "__main__":
