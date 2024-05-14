@@ -47,20 +47,20 @@ transforms = dict(
     bc=1.0,
 )
 data_loader, dom_loader, bnd_loader, transforms = get_loaders(
-    CONFIG, custom_transforms=transforms
+    CONFIG, custom_transforms=transforms, restrict_to=CONFIG.batch.data.restrict_to
 )
 
-def main(cfg=CONFIG):
+def main(config=CONFIG):
 
     # sample dimensions
     sample_dimensions = {
-        "lx": cfg.sample.dimensions.lx,
-        "ly": cfg.sample.dimensions.ly,
-        "lz": cfg.sample.dimensions.lz,
+        "lx": config.sample.dimensions.lx,
+        "ly": config.sample.dimensions.ly,
+        "lz": config.sample.dimensions.lz,
     }
     sample_center = (
-        cfg.sample.center.x,
-        cfg.sample.center.y,
+        config.sample.center.x,
+        config.sample.center.y,
         sample_dimensions["lz"] / 2,
     )
     # initialize 3D plot
@@ -69,9 +69,9 @@ def main(cfg=CONFIG):
     # draw the sample
     ax = draw_shoebox(ax, **sample_dimensions, center=sample_center)
 
-    dz = cfg.grid.dz
-    z_start = cfg.sample.dimensions.lz + cfg.grid.delta_height
-    z_stop = z_start + cfg.grid.domain_height
+    dz = config.grid.dz
+    z_start = config.sample.dimensions.lz + config.grid.delta_height
+    z_stop = z_start + config.grid.domain_height
 
     step = int((z_stop - z_start) / dz)
 
@@ -80,7 +80,7 @@ def main(cfg=CONFIG):
         ax,
         1,
         1,
-        center=(cfg.sample.center.x, cfg.sample.center.y, cfg.sample.dimensions.lz),
+        center=(config.sample.center.x, config.sample.center.y, config.sample.dimensions.lz),
         color="grey",
         alpha=0.5,
         label="Impedance surface",
