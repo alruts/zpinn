@@ -20,22 +20,22 @@ from zpinn.utils import (
 
 
 @hydra.main(
-    config_path="../../conf", config_name="inf_baffle", version_base=hydra.__version__
+    config_path="conf", config_name="inf_baffle.yaml", version_base=hydra.__version__
 )
 def gen_data(cfg):
     # create a temporary directory
-    tmp_dir = create_tmp_dir(cfg.dataset.out_dir)
+    tmp_dir = create_tmp_dir(cfg.paths.data)
 
     # Load config parameters
     frequencies = cfg.dataset.frequencies
-    model_path = os.path.join(cfg.dataset.model_dir, cfg.dataset.model_file)
+    model_path = cfg.paths.mph
     name = cfg.dataset.name
     thickness = cfg.sample.dimensions.lz
-    flow_resistivity = 41000
+    flow_resistivity = 41000  # Pa.s/m²
 
     # Initialize the dataset
     df = pd.DataFrame()
-    filename = os.path.join(cfg.dataset.out_dir, "raw", cfg.dataset.name + ".pkl")
+    filename = os.path.join(cfg.paths.data, "raw", cfg.dataset.name + ".pkl")
 
     df.attrs = {
         "frequencies": frequencies,
@@ -71,26 +71,21 @@ def gen_data(cfg):
         model.solve()
 
         # Export the measurement grid
-        save_name = f"{name}_{frequency}_Hz_measurement.txt"
+        save_name = f"{name}_{frequency}_Hz"
         save_name = os.path.join(tmp_dir, save_name)
         logging.log(logging.INFO, f"Exporting pressure grid to {save_name}")
-        model.export("grid", save_name)
-        model.export("surf", save_name.replace("measurement", "surface"))
+        model.export("grid", save_name + "_measurement.txt")
+        model.export("surf", save_name + "_surface.txt")
 
         # Get the grid and pressure from .txt file
-        grid, pressure = get_gt_data(os.path.join(cfg.dataset.model_dir, save_name))
+        grid, pressure = get_gt_data(save_name + "_measurement.txt")
+        ref_grid, ref_pressure, ref_uz = get_val_data(save_name + "_surface.txt")
 
-        val_grid, val_pressure, val_uz = get_val_data(
-            os.path.join(
-                cfg.dataset.model_dir, save_name.replace("measurement", "surface")
-            )
-        )
-
-        val = {
-            "real_pressure": val_pressure.real,
-            "imag_pressure": val_pressure.imag,
-            "real_velocity": val_uz.real,
-            "imag_velocity": val_uz.imag,
+        ref = {
+            "real_pressure": ref_pressure.real,
+            "imag_pressure": ref_pressure.imag,
+            "real_velocity": ref_uz.real,
+            "imag_velocity": ref_uz.imag,
         }
 
         # ground truth
@@ -99,7 +94,7 @@ def gen_data(cfg):
             "imag_pressure": pressure.imag,
             "real_impedance": impedance.real,
             "imag_impedance": impedance.imag,
-            "val": val,
+            "ref": ref,
         }
 
         # Add the data to the dataframe
@@ -109,7 +104,7 @@ def gen_data(cfg):
 
     # add metadata to the dataframe
     df.attrs["grid"] = grid
-    df.attrs["val_grid"] = val_grid
+    df.attrs["ref_grid"] = ref_grid
     df.attrs["thickness"] = thickness
     df.attrs["flow_resistivity"] = flow_resistivity
     df.attrs["name"] = name
