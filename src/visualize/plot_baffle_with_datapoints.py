@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 
 sys.path.append("src")
 from zpinn.plot.rooms import draw_rectangle, draw_shoebox
-from zpinn.get_dataloaders import get_dataloaders
+from zpinn.get_loaders import get_loaders
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -46,7 +46,7 @@ transforms = dict(
     ac=1.0,
     bc=1.0,
 )
-data_loader, dom_loader, bnd_loader, transforms = get_dataloaders(
+data_loader, dom_loader, bnd_loader, transforms = get_loaders(
     CONFIG, custom_transforms=transforms
 )
 

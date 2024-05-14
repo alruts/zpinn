@@ -10,7 +10,7 @@ sys.path.append("src")
 from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.SIREN import SIREN
-from zpinn.get_dataloaders import get_dataloaders
+from zpinn.get_loaders import get_loaders
 from zpinn.utils import flatten_pytree
 
 
@@ -112,7 +112,7 @@ initial_guesses = {
 }
 
 # get dataloaders
-data_loader, dom_loader, bnd_loader, transforms = get_dataloaders(config)
+data_loader, dom_loader, bnd_loader, transforms = get_loaders(config)
 data_iterator = iter(data_loader)
 dom_iterator = iter(dom_loader)
 bnd_iterator = iter(bnd_loader)
