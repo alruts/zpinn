@@ -11,6 +11,7 @@
 *.webp
 *.fig
 *.svg
+*.pgf
 
 # Ignore audio files
 *.wav
@@ -35,6 +36,9 @@
 # Ignore MATLAB related files
 *.asv
 
+# Ignore batch files
+*.bat
+
 # Ignore python related files 
 *.pyc
 *.ipynb
@@ -43,10 +47,8 @@
 **/.pytest_cache/
 **/outputs/
 **/tensorboards/
-**/audio/
 **/notebooks/
-**/video/
-**/bin/
+**/data/
 
 # Ignore todo list
 **/todo.txt
