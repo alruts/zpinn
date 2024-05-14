@@ -69,14 +69,18 @@ class PressureDataset(Dataset):
         )  # Convert to (x, y) coordinates
 
         coords = {
-            "x": transform(x, *self.transforms["x"]),
-            "y": transform(y, *self.transforms["y"]),
-            "z": transform(z, *self.transforms["z"]),
-            "f": transform(f, *self.transforms["f"]),
+            "x": transform(x, self.transforms["x0"], self.transforms["xc"]),
+            "y": transform(y, self.transforms["y0"], self.transforms["yc"]),
+            "z": transform(z, self.transforms["z0"], self.transforms["zc"]),
+            "f": transform(f, self.transforms["f0"], self.transforms["fc"]),
         }  # coordinates
         gt = {
-            "real_pressure": transform(pressure_re, *self.transforms["real_pressure"]),
-            "imag_pressure": transform(pressure_im, *self.transforms["imag_pressure"]),
+            "real_pressure": transform(
+                pressure_re, self.transforms["a0"], self.transforms["ac"]
+            ),
+            "imag_pressure": transform(
+                pressure_im, self.transforms["b0"], self.transforms["bc"]
+            ),
             "real_impedance": data["real_impedance"],
             "imag_impedance": data["imag_impedance"],
         }  # ground truth
@@ -179,7 +183,7 @@ class BoundarySampler(BaseSampler):
         limits (dict):
             Dictionary containing the limits of the points in each axis (min, max)
         transforms (dict):
-            Dictionary containing the transforms for the points 
+            Dictionary containing the transforms for the points
         distributions (dict):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
