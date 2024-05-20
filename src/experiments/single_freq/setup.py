@@ -2,7 +2,7 @@ from zpinn.get_loaders import get_loaders
 import optax
 
 
-def setup_loaders(config, restrict_to=None):
+def setup_loaders(config):
     return get_loaders(config, restrict_to=config.batch.data.restrict_to)
 
 
