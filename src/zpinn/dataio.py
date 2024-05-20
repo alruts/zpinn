@@ -96,16 +96,62 @@ class PressureDataset(Dataset):
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
         filter_fn = lambda arr, lb, ub: arr[(arr <= ub) & (arr >= lb)]
-        
+
         self._f = f if f is not None else self._f
         self._x = filter_fn(self._x, *x) if x is not None else self._x
         self._y = filter_fn(self._y, *y) if y is not None else self._y
         self._z = filter_fn(self._z, *z) if z is not None else self._z
-        
+
         self.n_x = len(self._x)
         self.n_y = len(self._y)
         self.n_z = len(self._z)
         self.n_f = len(self._f)
+
+    def get_reference(self, f):
+        """
+        Args:
+            f: The frequency for which the reference grid is to be obtained.
+
+        Returns:
+            tuple: A tuple comprising of the following elements:
+
+            coords (dict): A dictionary that encapsulates the coordinates.
+                It contains the following fields:
+
+                `x: The x-coordinate (m).`
+                `y: The y-coordinate (m).`
+                `z: The z-coordinate (m).`
+                `f: The frequency (Hz).`
+
+            gt (dict): A dictionary that encapsulates the ground truth values.
+                It contains the following fields:
+
+                `real_pressure: The real pressure value (Pa).`
+                `imag_pressure: The imaginary pressure value (Pa).`
+                `real_velocity: The real velocity value (m/s).`
+                `imag_velocity: The imaginary velocity value (m/s).`
+        """
+        assert f in self.data, f"Frequency {f} not in dataset"
+
+        x, y = self.data.attrs["ref_grid"]
+        x_lin = np.linspace(x.min(), x.max(), len(x))
+        y_lin = np.linspace(y.min(), y.max(), len(y))
+
+        coords = dict(
+            x=x_lin,
+            y=y_lin,
+            z=self.data.attrs["thickness"],
+            f=f,
+        )
+
+        gt = self.data[f]["ref"]
+
+        assert gt["real_pressure"].shape == (
+            len(x),
+            len(y),
+        ), f"Reference grid shape mismatch: {gt['real_pressure'].shape}, expected: {len(x), len(y)}"
+
+        return (coords, gt)
 
     def get_dataloader(self, batch_size=32, shuffle=False):
         """Returns a dataloader for the dataset."""

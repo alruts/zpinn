@@ -3,16 +3,18 @@ import sys
 
 import hydra
 import jax
+import jax.numpy as jnp
 import jax.random as jrandom
-from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
 import optax
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 sys.path.append("src")
-from zpinn.models.BVPModel import BVPModel, BVPEvaluator
+from setup import setup_loaders, setup_optimizers
+
+from zpinn.models.BVPModel import BVPEvaluator, BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.SIREN import SIREN
-from setup import setup_loaders, setup_optimizers
 
 
 @hydra.main(config_path="./", config_name="config.yaml", version_base=hydra.__version__)
@@ -35,9 +37,8 @@ def main(config):
         raise ValueError(f"Invalid architecture: {config.architecture}")
 
     # data iterators
-    dataloader, dom_sampler, bnd_sampler, transforms = setup_loaders(
-        config,
-        restrict_to={"f": [250]},  ## HACK remove later
+    dataloader, dom_sampler, bnd_sampler, ref_coords, ref_gt, transforms = (
+        setup_loaders(config)
     )
 
     # bvp
@@ -51,12 +52,13 @@ def main(config):
 
     # optimizers
     # lr, optimizers = setup_optimizers(config)
-    
+    # TODO: replace this with the optimizer schedules from setup
+
     optimizers = dict(
-        params= optax.adam(learning_rate=1e-4),
-        coeffs= optax.adam(learning_rate=1e-1),
+        params=optax.adam(learning_rate=1e-4),
+        coeffs=optax.adam(learning_rate=1e-1),
     )
-    
+
     opt_states = dict(
         params=optimizers["params"].init(bvp.parameters()),
         coeffs=optimizers["coeffs"].init(bvp.init_coeffs),
@@ -79,13 +81,7 @@ def main(config):
             weights = bvp.update_weights(weights, new_w)
 
         if step % config.logging.log_interval == 0:
-            ref_grid = dict(
-                x=jax.numpy.linspace(-0.5, 0.5, 100),
-                y=jax.numpy.linspace(-0.5, 0.5, 100),
-                z=0.05,
-                f=250.0,
-            )
-            evaluator(params, coeffs, new_w, batch, step, ref_grid, 1)
+            evaluator(params, coeffs, new_w, batch, step, ref_coords, ref_gt)
 
 
 if __name__ == "__main__":
