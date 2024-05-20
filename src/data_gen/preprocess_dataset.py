@@ -127,6 +127,9 @@ def preprocess(cfg=CONFIG):
         "downsample_factor": args.downsample_factor,
         "transforms": transforms,
         "grid": (x, y, z, f),
+        "ref_grid": raw_df.attrs["ref_grid"],
+        "thickness": raw_df.attrs["thickness"],
+        "flow_resistivity": raw_df.attrs["flow_resistivity"],
     }
 
     # Save the DataFrame
