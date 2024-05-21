@@ -46,7 +46,7 @@ transforms = dict(
     ac=1.0,
     bc=1.0,
 )
-data_loader, dom_loader, bnd_loader, transforms = get_loaders(
+data_loader, dom_loader, bnd_loader, _, _, transforms = get_loaders(
     CONFIG, custom_transforms=transforms, restrict_to=CONFIG.batch.data.restrict_to
 )
 
