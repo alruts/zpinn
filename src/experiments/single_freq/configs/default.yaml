@@ -1,3 +1,7 @@
+experiment:
+  name: single_freq
+  description: Single frequency impedance inversion
+
 paths:
   dataset: C:\Users\STNj\dtu\thesis\zpinn\data\processed\inf_baffle.pkl
   log_dir: tensorboards/single_freq
@@ -7,12 +11,12 @@ training:
   criterion: mse
   log_interval: 100 
   learning_rate:
-    params: 1e-2
-    coeffs: 1e-4
+    params: 1e-4
+    coeffs: 1.0
 
 
 architecture:
-  name: modified_siren
+  name: siren
   in_features: 4
   out_features: 2
   hidden_features: 64
@@ -25,9 +29,21 @@ batch:
   data:
     batch_size: 64
     shuffle: true
+    restrict_to:
+      x: # min, max
+      - -0.5
+      - 0.5
+      y: # min, max
+      - -0.5
+      - 0.5
+      z: # min, max
+      - 0.05
+      - 0.2
+      f: # list of frequencies
+      - 250
 
   domain:
-    batch_size: 128
+    batch_size: 64
     limits:
       x:
       - -0.5
@@ -37,10 +53,10 @@ batch:
       - 0.5
       z:
       - 0.05
-      - 0.06
+      - 0.14
       f:
-      - 0
-      - 1000
+      - 250
+      - 250
 
     distributions:
       x: uniform
@@ -49,7 +65,7 @@ batch:
       f: uniform
 
   boundary:
-    batch_size: 256
+    batch_size: 64
     limits:
       x:
       - -0.5
@@ -74,27 +90,27 @@ random:
 
 weighting:
   update_every: 1000
-  momentum: 0.9
+  momentum: 0.2
   initial_weights:
     data_re: 1.0
     data_im: 1.0
     pde_re: 1.0
     pde_im: 1.0
-    bc_re: 1.0
-    bc_im: 1.0
+    # bc_re: 1.0
+    # bc_im: 1.0
 
 impedance_model: 
   type: single_freq
   normalized: true
   initial_guess:
-    alpha: 1.0
-    beta: -1.0
+    alpha: 0.0
+    beta: 0.0
 
 logging:
   log_interval: 100
   log_losses: true
   log_weights: true
   log_coeffs: true
-  log_grads: false
-  log_errors: false
+  log_grads: true
+  log_errors: true
   log_preds: true
