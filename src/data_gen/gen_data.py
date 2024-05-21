@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config_path",
     type=str,
-    default="src\data_gen\conf\inf_baffle_test.yaml",
+    default="src\data_gen\configs\inf_baffle_test.yaml",
     help="path to the config file",
 )
 args = parser.parse_args()

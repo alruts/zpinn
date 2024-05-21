@@ -1,0 +1,62 @@
+paths:
+  mph: "C:\\Users\\STNj\\dtu\\thesis\\simulations\\.mph\\inf_baffle\\inf.mph"
+  data: "C:\\Users\\STNj\\dtu\\thesis\\zpinn\\data"
+
+# --- Simulation configuration for COMSOL ---
+sample:
+  dimensions:
+    lx: 1
+    ly: 1
+    lz: 0.05
+  center:
+    x: 0
+    y: 0
+    z: sample.dimensions.lz / 2 # place the sample on the floor
+
+source:
+  center:
+    x: 0 
+    y: 0 
+    z: 1
+  pressure: 1 # W
+
+grid:
+  domain_side: 1 # 1 m
+  domain_height: 0.01
+  dx: 0.01 # spatial resolution in x
+  dy: 0.01 # spatial resolution in y
+  dz: 0.01 # spatial resolution in z
+  delta_height: 0.01 # distance between the sample and the grid
+  x_start: -grid.domain_side / 2
+  x_stop: grid.domain_side / 2
+  y_start: -grid.domain_side / 2
+  y_stop: grid.domain_side / 2
+  z_start: sample.dimensions.lz + grid.delta_height
+  z_stop: grid.z_start + grid.domain_height
+
+mesh:
+  num_elements_per_wavelength: 6
+
+dataset:
+  name: inf_baffle_test
+  frequencies: [
+      50,
+      63,
+      80,
+  ]
+
+# --- Data processing configuration ---
+postprocessing: 
+  downsampling: 15
+  f: 
+    min: 50
+    max: 5000
+  x:
+    min: -0.5
+    max: 0.5
+  y:
+    min: -0.5
+    max: 0.5
+  z:
+    min: 0.0
+    max: 0.1
