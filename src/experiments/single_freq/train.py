@@ -10,15 +10,14 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 sys.path.append("src")
-from setup import setup_loaders, setup_optimizers
+from experiments.single_freq.utils import setup_loaders, setup_optimizers
 
 from zpinn.models.BVPModel import BVPEvaluator, BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.SIREN import SIREN
 
 
-@hydra.main(config_path="./", config_name="config.yaml", version_base=hydra.__version__)
-def main(config):
+def train_and_evaluate(config):
     time_stamp = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
     date, time = time_stamp.split("\\")[-2], time_stamp.split("\\")[-1]
     writer_path = os.path.join(config.paths.log_dir, date, time)
@@ -82,7 +81,7 @@ def main(config):
 
         if step % config.logging.log_interval == 0:
             evaluator(params, coeffs, new_w, batch, step, ref_coords, ref_gt)
+            
+    # TODO: Save the model as a pytree
 
-
-if __name__ == "__main__":
-    main()
+    writer.close()
