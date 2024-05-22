@@ -15,10 +15,6 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-
-logging.basicConfig(level=logging.INFO)
-
-
 @hydra.main(
     config_path=".\configs", config_name="default", version_base=hydra.__version__
 )
