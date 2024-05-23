@@ -13,11 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config_path",
     type=str,
-    default="src\data_gen\conf\inf_baffle.yaml",
+    default="src\data_gen\configs\inf_baffle.yaml",
     help="path to the config file",
-)
-parser.add_argument(
-    "-d", "--downsample_factor", type=int, default=1, help="downsample factor"
 )
 args = parser.parse_args()
 
@@ -27,16 +24,16 @@ CONFIG = OmegaConf.load(os.path.join(args.config_path))
 # Helper function
 downsample_fn = lambda data, factor: data[::factor, ::factor, :]
 
-def preprocess(cfg=CONFIG):
+def preprocess(config=CONFIG):
     raw_path = os.path.join(
-        cfg.paths.data,
+        config.paths.data,
         "raw",
-        f"{cfg.dataset.name}.pkl",
+        f"{config.dataset.name}.pkl",
     )
     processed_path = os.path.join(
-        cfg.paths.data,
+        config.paths.data,
         "processed",
-        f"{cfg.dataset.name}.pkl",
+        f"{config.dataset.name}.pkl",
     )
 
     # Load the raw data
@@ -47,72 +44,92 @@ def preprocess(cfg=CONFIG):
 
     # concatenate all pressure values to compute mean and max
     _p_re = np.concatenate(
-        [raw_df[frequency]["real_pressure"] for frequency in cfg.dataset.frequencies],
+        [
+            raw_df[frequency]["real_pressure"]
+            for frequency in config.dataset.frequencies
+        ],
         axis=-1,
     )
     _p_im = np.concatenate(
-        [raw_df[frequency]["imag_pressure"] for frequency in cfg.dataset.frequencies],
+        [
+            raw_df[frequency]["imag_pressure"]
+            for frequency in config.dataset.frequencies
+        ],
         axis=-1,
     )
-
-    # Inference grid from the first frequency
     x, y, z = raw_df.attrs["grid"]
 
     # Get frequencies
-    f = np.array(cfg.dataset.frequencies, dtype=np.float32)
+    f = np.array(config.dataset.frequencies, dtype=np.float32)
 
-    # find constants for transforming the data
+    # compute shift values
     a0 = np.mean(_p_re)
     b0 = np.mean(_p_im)
-    x0 = np.mean([cfg.postprocessing.x.min, cfg.postprocessing.x.max])
-    y0 = np.mean([cfg.postprocessing.y.min, cfg.postprocessing.y.max])
-    z0 = np.mean([cfg.postprocessing.z.min, cfg.postprocessing.z.max])
-    f0 = np.mean([cfg.postprocessing.f.min, cfg.postprocessing.f.max])
+    x0 = np.mean(x) if config.nondim.x.shift else 0
+    y0 = np.mean(y) if config.nondim.y.shift else 0
+    z0 = np.mean(z) if config.nondim.z.shift else 0
+    f0 = np.mean(f) if config.nondim.f.shift else 0
 
-    # find the max difference frvom the mean to norm in [-1, 1]
-    ac = np.std(np.abs(_p_re - a0))
-    bc = np.std(np.abs(_p_im - b0))
-    xc = np.max(np.abs(x - x0))
-    yc = np.max(np.abs(y - y0))
-    zc = np.max(np.abs(z - z0))
-    fc = np.max(np.abs(f - f0))
+    # compute the scale values
+    ac = np.max(abs(_p_re - a0)) if config.nondim.p.scale else 1
+    bc = np.max(abs(_p_im - b0)) if config.nondim.p.scale else 1
+    xc = np.max(abs(x - x0)) if config.nondim.x.scale else 1
+    yc = np.max(abs(y - y0)) if config.nondim.y.scale else 1
+    zc = np.max(abs(z - z0)) if config.nondim.z.scale else 1
+    fc = np.max(abs(f - f0)) if config.nondim.f.scale else 1
 
     # downsample spatial coordinates
-    x, y, z = [downsample_fn(arr, args.downsample_factor) for arr in (x, y, z)]
+    x, y, z = [
+        downsample_fn(arr, config.downsampling) for arr in (x, y, z)
+    ]
 
     # save the transforms
-    transforms = {
-        "x0": x0,
-        "xc": xc,
-        "y0": y0,
-        "yc": yc,
-        "z0": z0,
-        "zc": zc,
-        "f0": f0,
-        "fc": fc,
-        "a0": a0,
-        "ac": ac,
-        "b0": bc,
-        "bc": b0,
-    }
+    if config.nondim.use_nondim:
+        logging.info("Using non-dimensionalization")
+        transforms = {
+            "x0": x0,
+            "xc": xc,
+            "y0": y0,
+            "yc": yc,
+            "z0": z0,
+            "zc": zc,
+            "f0": f0,
+            "fc": fc,
+            "a0": a0,
+            "ac": ac,
+            "b0": bc,
+            "bc": b0,
+        }
+    else:
+        logging.info("Skipping non-dimensionalization")
+        transforms = {
+            "x0": 0.0,
+            "xc": 1.0,
+            "y0": 0.0,
+            "yc": 1.0,
+            "z0": 0.0,
+            "zc": 1.0,
+            "f0": 0.0,
+            "fc": 1.0,
+            "a0": 0.0,
+            "ac": 1.0,
+            "b0": 0.0,
+            "bc": 1.0,
+        }
 
     # loop over the frequencies and save the ground truth values
-    for idx, frequency in enumerate(cfg.dataset.frequencies):
+    for idx, frequency in enumerate(config.dataset.frequencies):
         # Load the data
         data = raw_df[frequency]
 
-        # Unpack the data
-        p_re = data["real_pressure"]
-        p_im = data["imag_pressure"]
-
-        # downsample the data
-        p_re = downsample_fn(p_re, args.downsample_factor)
-        p_im = downsample_fn(p_im, args.downsample_factor)
-
         # save ground truth and transforms to the processed dataframe
         gt = {
-            "real_pressure": p_re,
-            "imag_pressure": p_im,
+            "real_pressure": downsample_fn(
+                data["real_pressure"], config.downsampling
+            ),
+            "imag_pressure": downsample_fn(
+                data["imag_pressure"], config.downsampling
+            ),
             "real_impedance": data["real_impedance"],
             "imag_impedance": data["imag_impedance"],
             "ref": data.ref,
@@ -123,8 +140,8 @@ def preprocess(cfg=CONFIG):
 
     # save attrs
     processed_df.attrs = {
-        "name": cfg.dataset.name,
-        "downsample_factor": args.downsample_factor,
+        "name": config.dataset.name,
+        "downsample_factor": config.downsampling,
         "transforms": transforms,
         "grid": (x, y, z, f),
         "ref_grid": raw_df.attrs["ref_grid"],
@@ -137,9 +154,10 @@ def preprocess(cfg=CONFIG):
     processed_df.to_pickle(processed_path)
 
     # log output shape
-    logging.info(f"Output shape: {p_re.shape}")
+    logging.info(f"Output shape: {processed_df[frequency]['real_pressure'].shape}")
 
     print("Transforms: ", transforms)
+
 
 if __name__ == "__main__":
     preprocess()
