@@ -1,40 +1,59 @@
-TODO
+TODo
+
+MAKE: eval script
+DEBUG: NONDIM each feature and see which one causes problemz
+
+ASK: why is my model not converging super fast?
+
+CHECK: why is the impedance not being approached like before?
+    - Is there some reason for this?
 
 
-use new methods (mMLP, adaptive weights)
-    - mmlp [X]
-    - adaptive weights [] (almost there, hvernig væri best að implementa? komið í try_grad_weights notebook)
-            Nota "object" oriented leið hjá okkar mönnum, búa til base class sem implementar allt nema 
-            loss föllin og arkítektúr (jafnvel loss líka í mínu tilfelli?),  
-    - vinna áfram í software engineering partinum
-        - setja mikinn tíma í model evaluator 
+ADD: Controllable SNR for    (add this to the dataloaders? or the bvp model?)
+    - mic noise
+    - spatial measurement noise
 
-            BINGO: ser lambda fyrir im og re parts? lambda_bcre, lambda_bcim ... þannig nær networkan að balannsa
-            real og im parts respectively .... yeeeeee baby
-
-Implement smarter way to specify which data points to use (pick specific points?)
+Implement smarter way to specify which data points to use (pick specific points?) # like other guys
     use fewer POINTS (3x3x2 grid) []
     preprocess (3x3 grid in the middle of sample somewhere)
-
-create new data, with val pressure and particle velocity gt [~] 
-    - room
-    - baffle
     
-Examine the (edge effect) on the impedance (is it worth it to only impose at lambda/4 away from edge and .. from corner etc.)
-
-
-(It is probably possible to use
-u = p / Z
-)
-
-gen error plots while training (add)
-
+Examine the (edge effect) on the impedance []
+(is it worth it to only impose at lambda/4 away from edge and .. from corner etc.) 
 
 EXTRA: 
     Explore exactly imposing BC (would be amazee)
     save pressure transforms for every frequency seperately (equal convergence)
         (need to create continuous a, b constants?)
+                THis is possible if I only use physics and bnd loss exactly on the boundary
+                    (not very keen on this)
     - use jaxopt (for potential use of LBFGS)
 
 
 
+
+Experiments to run on the final system:
+    - Find what number of epochs is fair to ...
+    - Noise robustness
+        Vary SNR in spatial measurements and mic signal
+    - Test single frequency
+        # what is interesting here? proof of concept?
+        # how big does the model need to be?
+        # Do a big hyperparameter sweep
+        # test eps method vs gradient based methods
+        # Test using BC loss vs not using it at all
+        # effect of adding room (to all of this)
+        ## Examine effect of number of data points, number of collocation points
+
+    - Test model fitting multifreq
+        # will it fit to the sample
+        # essentially do similar tests as before
+             
+             "WHAT I EXPECT": need bigger model than single freq. obviously need more data, how many freqs are needed?
+                - In real mesurements a dense amount of frequency data can be obtained, is this beneficial?
+                - Will the noise in real measurements have a big impact?
+
+    - Test on real data
+    #
+
+DONE: 
+ADD: gen error plots while training [X] !!! NO 1 PRIORITY
