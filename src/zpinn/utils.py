@@ -125,13 +125,14 @@ def set_param(model, param_name, value):
     model.parameter(param_name, str(value))
 
 
-def get_all_leaf_nodes(config: DictConfig, path="", nodes=[]):
+def get_all_leaf_nodes(config: DictConfig, path="", skip_nodes=[]):
     """
     Retrieves all leaf nodes from a Hydra configuration (DictConfig) in the format '...grandparent.parent.child'.
 
     Args:
         config: The Hydra configuration (DictConfig) object.
-        path: The current path in the config structure (internal use).
+        path: The current path in the config structure.
+        nodes: The list of nodes to skip.
 
     Returns:
         A list of tuples, where each tuple contains (path, value) for a leaf node.
@@ -139,11 +140,11 @@ def get_all_leaf_nodes(config: DictConfig, path="", nodes=[]):
 
     leaf_nodes = []
 
-    def _traverse_and_collect_leaf_nodes(config_node, current_path, nodes=[]):
-        """Recursively traverses the configuration and collects leaf nodes."""
+    def _traverse_and_collect_leaf_nodes(config_node, current_path, skip_nodes=[]):
+        """Recursively traverses a configuration and collects leaf nodes."""
 
         for key, value in config_node.items():
-            if key not in nodes:
+            if key in skip_nodes:
                 continue
 
             new_path = f"{current_path}.{key}" if current_path else key
@@ -155,22 +156,23 @@ def get_all_leaf_nodes(config: DictConfig, path="", nodes=[]):
                 leaf_nodes.append((new_path, value))
 
     _traverse_and_collect_leaf_nodes(
-        config, path, nodes
+        config, path, skip_nodes
     )  # Start the recursion with the initial config
     return leaf_nodes
 
 
-def set_all_config_params(model: any, cfg: DictConfig, nodes: list[str] = []):
+def set_all_config_params(model: any, cfg: DictConfig, skip_nodes: list[str] = []):
     """Sets all parameters in the config to the COMSOL model.
 
     Args:
         model (any): comsol model object
         cfg (DictConfig): Hydra configuration object
-        skip_nodes (list[str]): list of nodes to skip in the configuration
+        nodes (list[str]): list of nodes to use in the configuration
     """
-    leaf_nodes = get_all_leaf_nodes(cfg, nodes=nodes)
-    for path, value in leaf_nodes:
-        set_param(model, path, value)
+    leaf_nodes = get_all_leaf_nodes(cfg, skip_nodes=skip_nodes)
+    print(leaf_nodes)
+    for param, value in leaf_nodes:
+        set_param(model, param, value)
 
 
 def load_model(eval_model: str, out_dir: str, model_skeleton: eqx.Module) -> eqx.Module:
