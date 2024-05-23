@@ -66,14 +66,14 @@ class PressureDataset(Dataset):
             self._x[x_idx],
             self._y[y_idx],
             self._z[z_idx],
-        )  # Convert to (x, y) coordinates
+        )  # Convert to (x, y, z) coordinates
 
         coords = {
             "x": transform(x, self.transforms["x0"], self.transforms["xc"]),
             "y": transform(y, self.transforms["y0"], self.transforms["yc"]),
             "z": transform(z, self.transforms["z0"], self.transforms["zc"]),
             "f": transform(f, self.transforms["f0"], self.transforms["fc"]),
-        }  # coordinates
+        }
         gt = {
             "real_pressure": transform(
                 pressure_re, self.transforms["a0"], self.transforms["ac"]
