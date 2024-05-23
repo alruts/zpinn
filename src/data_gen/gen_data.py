@@ -7,7 +7,7 @@ import mph
 import pandas as pd
 from omegaconf import OmegaConf
 
-sys.path.append("zpinn")
+sys.path.append("src")
 from zpinn.utils import (
     create_tmp_dir,
     delete_dir,
@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config_path",
     type=str,
-    default="src\data_gen\configs\inf_baffle_test.yaml",
+    default="src\data_gen\configs\inf_baffle.yaml",
     help="path to the config file",
 )
 args = parser.parse_args()
@@ -47,6 +47,10 @@ def gen_data(config=CONFIG):
     thickness = config.sample.dimensions.lz
     flow_resistivity = 41_000  # Pa.s/m²
 
+    logging.log(logging.INFO, f"Generating dataset for {name}")
+    logging.log(logging.INFO, f"Thickness: {thickness} m")
+    logging.log(logging.INFO, f"Flow resistivity: {flow_resistivity} Pa.s/m²")
+
     # Initialize the dataset
     df = pd.DataFrame()
     filename = os.path.join(config.paths.data, "raw", config.dataset.name + ".pkl")
@@ -63,9 +67,9 @@ def gen_data(config=CONFIG):
     set_all_config_params(
         model,
         config,
-        nodes=["sample", "source", "grid", "mesh"],
+        skip_nodes=["paths", "postprocessing", "dataset"],
     )
-    
+
     # Loop over the frequencies and run the simulations
     for frequency in frequencies:
         print(f"Running simulation for {frequency} Hz")
@@ -129,6 +133,8 @@ def gen_data(config=CONFIG):
 
     delete_dir(tmp_dir)
     logging.log(logging.INFO, f"Temporary directory {tmp_dir} deleted")
+
+    model.save(config.dataset.name + ".mph")
 
 
 if __name__ == "__main__":
