@@ -2,7 +2,7 @@ import jax.numpy as jnp
 from .constants import _c0, _rho0
 
 
-def constant_impedance(coeffs, f, normalized=False):
+def constant_impedance(coeffs, f, normalized=True):
     """Return the impedance of the singular model."""
     z = coeffs["alpha"] + 1j * coeffs["beta"]
 
