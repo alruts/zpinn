@@ -6,7 +6,7 @@ def scalar_field(
     P,
     X,
     Y,
-    cmap="RdBu_r",
+    cmap="seismic",
     balanced_cmap=True,
     xlabel="x (m)",
     ylabel="y (m)",
