@@ -63,12 +63,12 @@ def preprocess(config=CONFIG):
     f = np.array(config.dataset.frequencies, dtype=np.float32)
 
     # compute shift values
-    a0 = np.mean(_p_re) if config.nondim.p.shift else 0
-    b0 = np.mean(_p_im) if config.nondim.p.shift else 0
-    x0 = np.mean(x) if config.nondim.x.shift else 0
-    y0 = np.mean(y) if config.nondim.y.shift else 0
-    z0 = np.mean(z) if config.nondim.z.shift else 0
-    f0 = np.mean(f) if config.nondim.f.shift else 0
+    a0 = np.min(_p_re) if config.nondim.p.shift else 0
+    b0 = np.min(_p_im) if config.nondim.p.shift else 0
+    x0 = np.min(x) if config.nondim.x.shift else 0
+    y0 = np.min(y) if config.nondim.y.shift else 0
+    z0 = np.min(z) if config.nondim.z.shift else 0
+    f0 = np.min(f) if config.nondim.f.shift else 0
 
     # compute the scale values
     ac = np.max(abs(_p_re - a0)) if config.nondim.p.scale else 1
