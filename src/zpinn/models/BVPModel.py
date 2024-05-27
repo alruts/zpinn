@@ -80,24 +80,6 @@ class BVPModel(eqx.Module):
         # Initialize the loss criterion
         self.criterion = criteria[config.training.criterion]
 
-    def p_pred_fn(self, params, *args):
-        """Predict pressure over a grid."""
-        return vmap(
-            vmap(self.p_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )(params, *args)
-
-    def un_pred_fn(self, params, *args):
-        """Predict particle velocity over a grid."""
-        return vmap(
-            vmap(self.un_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )(params, *args)
-
-    def z_pred_fn(self, params, *args):
-        """Predict impedance over a grid."""
-        return vmap(
-            vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )(params, *args)
-
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
         x0, xc = tfs["x0"], tfs["xc"]
@@ -141,6 +123,24 @@ class BVPModel(eqx.Module):
             if is_eqx_linear(x)
         ]
         return params
+
+    def p_pred_fn(self, params, *args):
+        """Predict pressure over a grid."""
+        return vmap(
+            vmap(self.p_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )(params, *args)
+
+    def un_pred_fn(self, params, *args):
+        """Predict particle velocity over a grid."""
+        return vmap(
+            vmap(self.un_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )(params, *args)
+
+    def z_pred_fn(self, params, *args):
+        """Predict impedance over a grid."""
+        return vmap(
+            vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )(params, *args)
 
     def psi_net(self, params, *args, part=None):
         """Nondimensionalized pressure network."""
