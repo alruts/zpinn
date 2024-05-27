@@ -9,24 +9,6 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from zpinn.constants import _c0
 
 
-# global params
-FONT_SIZE = 12
-plt.rcParams["font.size"] = FONT_SIZE
-plt.rcParams["axes.labelsize"] = FONT_SIZE
-plt.rcParams["axes.titlesize"] = FONT_SIZE
-plt.rcParams["xtick.labelsize"] = FONT_SIZE
-plt.rcParams["ytick.labelsize"] = FONT_SIZE
-plt.rcParams["legend.fontsize"] = FONT_SIZE
-plt.rcParams["figure.titlesize"] = FONT_SIZE
-plt.rcParams["figure.figsize"] = (10, 6)
-
-# Enable Latex
-try:
-    plt.rc("text", usetex=True)
-except:
-    pass
-
-
 def get_center(lx, ly, lz, center=(0, 0, 0)):
     x0, y0, z0 = center
     x0 -= lx / 2
