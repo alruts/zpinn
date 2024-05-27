@@ -97,7 +97,7 @@ class BVPModel(eqx.Module):
         return vmap(
             vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
         )(params, *args)
-    
+
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
         x0, xc = tfs["x0"], tfs["xc"]
@@ -329,16 +329,15 @@ class BVPModel(eqx.Module):
     @eqx.filter_jit
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
-        pde_re = losses["pde_re"]
-        pde_im = losses["pde_im"]
-        dat_re = losses["data_re"]
-        dat_im = losses["data_im"]
+        alpha = 10.0
 
-        wr = 1 / (2 * (pde_re + dat_re) ** 2)
-        wi = 1 / (2 * (pde_im + dat_im) ** 2)
+        logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x)))
 
-        losses["bc_re"] = losses["bc_re"] * wr
-        losses["bc_im"] = losses["bc_im"] * wi
+        w_re = logicstic_fn((losses["data_re"] + losses["data_im"]), alpha)
+        w_im = logicstic_fn((losses["data_re"] + losses["data_im"]), alpha)
+
+        losses["bc_re"] = w_re * losses["bc_re"]
+        losses["bc_im"] = w_im * losses["bc_im"]
 
         return losses
 
@@ -349,7 +348,7 @@ class BVPModel(eqx.Module):
 
         if self.weighting_scheme == "grad_norm":
             # bc_strategy
-            # losses = self.bc_strategy(losses)
+            losses = self.bc_strategy(losses)
             # Compute weighted loss
             weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
             # Sum weighted losses
