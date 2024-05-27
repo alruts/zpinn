@@ -65,17 +65,17 @@ dataset:
 downsampling: 16
 nondim: 
   f: 
-    shift: false
-    scale: false
+    shift: false #
+    scale: true
   x:
-    shift: false
-    scale: false
+    shift: true
+    scale: true
   y:
-    shift: false
-    scale: false
+    shift: true
+    scale: true
   z:
-    shift: false
-    scale: false
+    shift: false #
+    scale: true
   p:
-    shift: false
-    scale: false
+    shift: true
+    scale: true

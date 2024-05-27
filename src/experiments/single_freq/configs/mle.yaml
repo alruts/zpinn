@@ -117,6 +117,7 @@ logging:
   log_losses: true
   log_weights: true
   log_coeffs: true
+  log_impedance: true
   log_grads: true
   log_errors: true
   log_preds: true
