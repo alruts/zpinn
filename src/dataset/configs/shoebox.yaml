@@ -1,8 +1,19 @@
 paths:
-  mph: "C:\\Users\\STNj\\dtu\\thesis\\simulations\\.mph\\inf_baffle\\inf_baffle.mph"
-  data: "C:\\Users\\STNj\\dtu\\thesis\\zpinn\\data"
+  mph: "comsol\\shoebox3.mph"
+  data: ".\\data"
 
 # --- Simulation configuration for COMSOL ---
+
+room:
+  dimensions:
+    lx: 3.14 # width
+    ly: 4.38 # depth
+    lz: 3.27 # height
+  center:
+    x: 0
+    y: 0
+    z: room.dimensions.lz / 2 # place the room on the floor
+
 sample:
   dimensions:
     lx: 1
@@ -35,22 +46,22 @@ grid:
   z_stop: grid.z_start + grid.domain_height
 
 mesh:
-  num_elements_per_wavelength: 6
+  num_elements_per_wavelength: 4
 
 dataset:
-  name: inf_baffle
+  name: shoebox
   frequencies: [
-      # 50,
-      # 63,
-      # 80,
-      # 100,
-      # 126,
-      # 160,
-      # 200,
+      50,
+      63,
+      80,
+      100,
+      126,
+      160,
+      200,
       250,
-      # 320,
-      # 400,
-      # 500,
+      320,
+      400,
+      500,
       # 630,
       # 800,
       # 1000,
@@ -66,16 +77,16 @@ downsampling: 16
 nondim: 
   f: 
     shift: false
-    scale: false
+    scale: true
   x:
-    shift: false
-    scale: false
+    shift: true
+    scale: true
   y:
-    shift: false
-    scale: false
+    shift: true
+    scale: true
   z:
     shift: false
-    scale: false
+    scale: true
   p:
-    shift: false
-    scale: false
+    shift: true
+    scale: true

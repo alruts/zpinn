@@ -16,9 +16,14 @@ training:
       decay_rate: 0.9  
     coeffs:
       lr: 1e-2
+      # transition_steps: 2000
+      # pct_start: 0.3
+    weights:
+      lr: 1e-3
+
 
 architecture:
-  name: modified_siren
+  name: siren
   in_features: 4
   out_features: 2
   hidden_features: 64
@@ -91,16 +96,14 @@ random:
   seed: 42
 
 weighting:
-  scheme: grad_norm # or 'mle'
-  update_every: 200
-  momentum: 0.9
+  scheme: mle
   initial_weights:
     data_re: 1.0
     data_im: 1.0
-    pde_re: 1.0
-    pde_im: 1.0
-    # bc_re: 1.0
-    # bc_im: 1.0
+    pde_re: 2.0
+    pde_im: 2.0
+    bc_re: 20.0
+    bc_im: 20.0
 
 impedance_model: 
   type: single_freq
