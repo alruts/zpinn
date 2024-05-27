@@ -150,6 +150,10 @@ class PressureDataset(Dataset):
             len(x),
             len(y),
         ), f"Reference grid shape mismatch: {gt['real_pressure'].shape}, expected: {len(x), len(y)}"
+        
+        gt["real_impedance"] = self.data[f]["real_impedance"]
+        gt["imag_impedance"] = self.data[f]["imag_impedance"]
+        gt["f"] = f
 
         return (coords, gt)
 
