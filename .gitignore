@@ -16,6 +16,10 @@
 # Ignore audio files
 *.wav
 
+# Ignore COMSOL files
+*.mph
+*.lock
+
 # Ignore hdf5 files
 *.hdf5
 *.h5 
