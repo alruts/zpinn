@@ -3,7 +3,6 @@ import sys
 
 import pandas as pd
 from matplotlib import pyplot as plt
-from omegaconf import OmegaConf
 
 sys.path.append("src")
 from zpinn.plot.fields import plot_scalar_field_grid, scalar_field
