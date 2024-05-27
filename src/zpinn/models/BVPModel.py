@@ -10,7 +10,7 @@ from jax.tree_util import tree_leaves, tree_map, tree_reduce
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
 from zpinn.impedance_models import RMK_plus_1, constant_impedance
-from zpinn.utils import flatten_pytree
+from zpinn.utils import flatten_pytree, cat_batches
 
 criteria = {
     "mse": lambda x, y: jnp.mean((x - y) ** 2),
@@ -18,9 +18,7 @@ criteria = {
 }
 
 
-# TODO: Add epsilon method,
 # TODO: add exact imposing method,
-# TODO: (EXTRA) Add extra class to handle optimizers.
 
 
 class BVPModel(eqx.Module):
@@ -211,8 +209,8 @@ class BVPModel(eqx.Module):
     def z_net(self, params, *args):
         """Boundary condition network."""
         # compute the particle velocity
-        uzr, uzi = self.un_net(params, *args)
-        u_cplx = uzr + 1j * uzi
+        unr, uni = self.un_net(params, *args)
+        u_cplx = unr + 1j * uni
 
         # compute the pressure
         pr, pi = self.p_net(params, *args)
@@ -220,10 +218,40 @@ class BVPModel(eqx.Module):
 
         z = p_cplx / u_cplx
 
-        if self.is_normalized:
-            z /= _rho0 * _c0
-
         return z.real, z.imag
+
+    def p_loss(self, params, batch):
+        """Data (pressure) loss."""
+        coords, gt = batch  # unpack the data batch
+        x, y, z, f = self.unpack_coords(coords)
+        pr_pred, pi_pred = vmap(self.psi_net, in_axes=(None, *[0] * 4))(
+            params, *(x, y, z, f)
+        )
+        pr_target, pi_target = gt["real_pressure"], gt["imag_pressure"]
+        return self.criterion(pr_pred, pr_target), self.criterion(pi_pred, pi_target)
+
+    def r_loss(self, params, batch):
+        """PDE residual loss."""
+        coords = batch
+        x, y, z, f = self.unpack_coords(coords)
+        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
+        return self.criterion(rr, 0.0), self.criterion(ri, 0.0)
+
+    def z_loss(self, params, coeffs, batch):
+        """Boundary loss."""
+        coords = batch
+        x, y, z, f = self.unpack_coords(coords)
+        zr_pred, zi_pred = vmap(self.z_net, in_axes=(None, *[0] * 4))(
+            params, *(x, y, z, f)
+        )
+        zr_mdl, zi_mdl = self.impedance_model(coeffs, f * self.fc + self.f0, False)
+
+        # if is_normalized, model will fit normalized impedance (zeta = z / rho0 * c0)
+        if self.is_normalized:
+            zi_pred /= _rho0 * _c0
+            zr_pred /= _rho0 * _c0
+
+        return self.criterion(zr_pred, zr_mdl), self.criterion(zi_pred, zi_mdl)
 
     @eqx.filter_jit
     def compute_weights(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
@@ -260,81 +288,38 @@ class BVPModel(eqx.Module):
         return weights
 
     @eqx.filter_jit
-    def grad_coeffs(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
+    def grad_coeffs(self, params, coeffs, batch):
         """Computes the gradient of the loss w.r.t. the coefficients."""
-        grads = jax.jacrev(self.losses, argnums=1)(
-            params, coeffs, dat_batch, dom_batch, bnd_batch
-        )
-
-        coeff_keys = self.coeffs.keys()
-        subdicts = [grads[key] for key in grads.keys()]
-
-        sum_grad_dict = {}
-        for key in coeff_keys:
-            sum_grad_dict[key] = jnp.sum(jnp.stack([d[key] for d in subdicts]))
-
-        return sum_grad_dict
+        grads = jax.jacrev(self.z_loss, argnums=1)(params, coeffs, batch)
+        # add real and imag parts to form one gradient
+        grads = tree_map(lambda x, y: x + y, grads[0], grads[1])
+        return grads
 
     @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Returns the losses of the model."""
 
         # data loss
-        data_loss_re, data_loss_im = self.dat_loss(params, dat_batch)
+        data_re, data_im = self.p_loss(params, dat_batch)
 
         # concatenate the batches
-        comb_batch = dict(
-            x=jnp.array([]), y=jnp.array([]), z=jnp.array([]), f=jnp.array([])
-        )
-        for batch in [bnd_batch, dom_batch]:
-            for key in batch.keys():
-                comb_batch[key] = jnp.concatenate([comb_batch[key], batch[key]], axis=0)
-
-        pde_loss_re, pde_loss_im = self.r_loss(params, comb_batch)
+        pde_re, pde_im = self.r_loss(params, cat_batches([dom_batch, bnd_batch]))
 
         # boundary loss
-        bc_loss_re, bc_loss_im = self.z_loss(params, coeffs, bnd_batch)
+        bc_re, bc_im = self.z_loss(params, coeffs, bnd_batch)
 
         return {
-            "data_re": data_loss_re,
-            "data_im": data_loss_im,
-            "pde_re": pde_loss_re,
-            "pde_im": pde_loss_im,
-            "bc_re": bc_loss_re,
-            "bc_im": bc_loss_im,
+            "data_re": data_re,
+            "data_im": data_im,
+            "pde_re": pde_re,
+            "pde_im": pde_im,
+            "bc_re": bc_re,
+            "bc_im": bc_im,
         }
 
-    def dat_loss(self, params, batch):
-        """Data loss."""
-        coords, gt = batch  # unpack the data batch
-        x, y, z, f = self.unpack_coords(coords)
-        pr_pred, pi_pred = vmap(self.psi_net, in_axes=(None, *[0] * 4))(
-            params, *(x, y, z, f)
-        )
-        pr_target, pi_target = gt["real_pressure"], gt["imag_pressure"]
-        return self.criterion(pr_pred, pr_target), self.criterion(pi_pred, pi_target)
-
-    def r_loss(self, params, batch):
-        """PDE residual loss."""
-        coords = batch
-        x, y, z, f = self.unpack_coords(coords)
-        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
-        return self.criterion(rr, 0.0), self.criterion(ri, 0.0)
-
-    def z_loss(self, params, coeffs, batch):
-        """Boundary loss."""
-        coords = batch
-        x, y, z, f = self.unpack_coords(coords)
-        zpr, zpi = vmap(self.z_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
-        # zmr, zmi = self.impedance_model(
-        #     coeffs, f * self.fc + self.f0, normalized=self.is_normalized
-        # )
-        # return self.criterion(zpr, zmr), self.criterion(zpi, zmi)
-        return jnp.std(zpr), jnp.std(zpi)
-
-
+    @eqx.filter_jit
     def bc_strategy(self, losses):
-        """Boundary condition weighting strategy."""
+        """Boundary condition balancing strategy."""
         pde_re = losses["pde_re"]
         pde_im = losses["pde_im"]
         dat_re = losses["data_re"]
@@ -342,9 +327,6 @@ class BVPModel(eqx.Module):
 
         wr = 1 / (2 * (pde_re + dat_re) ** 2)
         wi = 1 / (2 * (pde_im + dat_im) ** 2)
-
-        wr = 0
-        wi = 0
 
         losses["bc_re"] = losses["bc_re"] * wr
         losses["bc_im"] = losses["bc_im"] * wi
@@ -358,34 +340,35 @@ class BVPModel(eqx.Module):
 
         if self.weighting_scheme == "grad_norm":
             # bc_strategy
-            losses = self.bc_strategy(losses)
+            # losses = self.bc_strategy(losses)
             # Compute weighted loss
             weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
             # Sum weighted losses
             loss = tree_reduce(lambda x, y: x + y, weighted_losses)
 
         elif self.weighting_scheme == "mle":
+            # Compute log regularization term
+            loss = jnp.log(tree_reduce(lambda x, y: x * y, weights))
+            # convert to lambdas
+            lambdas = jax.tree_map(lambda x: 1 / (2 * x**2), weights)
             # Compute weighted loss
-            weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
+            weighted_losses = tree_map(lambda x, y: x * y, losses, lambdas)
             # Sum weighted losses
-            loss = tree_reduce(lambda x, y: x + y, weighted_losses)
-            # Convert to epsilons
-            epsilons = tree_map(lambda x: jnp.sqrt(1 / (2 * x)), weights)
-            loss += jnp.sum(jnp.log(epsilons))
+            loss += tree_reduce(lambda x, y: x + y, weighted_losses)
 
         return loss
 
     @eqx.filter_jit
-    def update(self, params, weights, coeffs, opt_states, optimizers, batch):
+    def update(self, params, weights, coeffs, opt_states, optimizers, batches):
 
         # --- Update the coefficients ---
-        grads = self.grad_coeffs(params, coeffs, **batch)
+        grads = self.grad_coeffs(params, coeffs, batches["bnd_batch"])
         updates, opt_states["coeffs"] = optimizers["coeffs"].update(
             grads, opt_states["coeffs"]
         )
-        coeffs = eqx.apply_updates(self.coeffs, updates)
+        coeffs = eqx.apply_updates(coeffs, updates)
 
-        # constraint RMK+1 model
+        # Constraint RMK+1 model
         if self.impedance_model == RMK_plus_1:
             coeffs = {
                 "K": jnp.maximum(coeffs["K"], 0.0),
@@ -395,9 +378,9 @@ class BVPModel(eqx.Module):
                 "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
             }
 
-        # --- Update the parameters ---
+        # --- Update the parameters and return ---
         if self.weighting_scheme == "grad_norm":
-            grads = jax.grad(self.compute_loss)(params, weights, coeffs, **batch)
+            grads = jax.grad(self.compute_loss)(params, weights, coeffs, **batches)
             updates, opt_states["params"] = optimizers["params"].update(
                 grads, opt_states["params"]
             )
@@ -406,7 +389,7 @@ class BVPModel(eqx.Module):
 
         elif self.weighting_scheme == "mle":
             # params
-            grads = jax.grad(self.compute_loss)(params, weights, coeffs, **batch)
+            grads = jax.grad(self.compute_loss)(params, weights, coeffs, **batches)
             updates, opt_states["params"] = optimizers["params"].update(
                 grads, opt_states["params"]
             )
@@ -414,7 +397,7 @@ class BVPModel(eqx.Module):
 
             # weights
             grads = jax.jacrev(self.compute_loss, argnums=1)(
-                params, weights, coeffs, **batch
+                params, weights, coeffs, **batches
             )
             updates, opt_states["weights"] = optimizers["weights"].update(
                 grads, opt_states["weights"]
@@ -422,22 +405,60 @@ class BVPModel(eqx.Module):
             weights = eqx.apply_updates(weights, updates)
             return params, weights, coeffs, opt_states
 
-
+    @eqx.filter_jit
     def compute_l2_error(self, params, coords, ref):
         """Compute relative L2 error."""
         pr_star = ref["real_pressure"]
         pi_star = ref["imag_pressure"]
-        uzr_star = ref["real_velocity"]
+        unr_star = ref["real_velocity"]
         uzi_star = ref["imag_velocity"]
+
+        z_cmplx = ref["real_pressure"] + 1j * ref["imag_pressure"]
+        z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
+        zr_star, zi_star = z_cmplx.real, z_cmplx.imag
 
         x, y, z, f = self.bvp.unpack_coords(coords)
         pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))
-        uzr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(x, y, z, f))
+        unr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(x, y, z, f))
+        zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
+
+        error_fn = lambda x, y: jnp.linalg.norm(x - y) / (jnp.linalg.norm(y) + 1e-12)
 
         errors = dict(
-            pr_error=jnp.linalg.norm(pr_star - pr_pred) / jnp.linalg.norm(pr_star),
-            pi_error=jnp.linalg.norm(pi_star - pi_pred) / jnp.linalg.norm(pi_star),
-            uzr_error=jnp.linalg.norm(uzr_star - uzr_pred) / jnp.linalg.norm(uzr_star),
-            uzi_error=jnp.linalg.norm(uzi_star - uzi_pred) / jnp.linalg.norm(uzi_star),
+            pr=error_fn(pr_star, pr_pred),
+            pi=error_fn(pi_star, pi_pred),
+            unr=error_fn(unr_star, unr_pred),
+            uzi=error_fn(uzi_star, uzi_pred),
+            zr=error_fn(zr_star, zr_pred),
+            zi=error_fn(zi_star, zi_pred),
+        )
+        return errors
+
+    @eqx.filter_jit
+    def compute_l2_error_grid(self, params, coords, ref):
+        """Compute relative L2 error."""
+        pr_star = ref["real_pressure"]
+        pi_star = ref["imag_pressure"]
+        unr_star = ref["real_velocity"]
+        uzi_star = ref["imag_velocity"]
+
+        z_cmplx = ref["real_pressure"] + 1j * ref["imag_pressure"]
+        z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
+        zr_star, zi_star = z_cmplx.real, z_cmplx.imag
+
+        x, y, z, f = self.bvp.unpack_coords(coords)
+        pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))
+        unr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(x, y, z, f))
+        zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
+
+        error_fn = lambda x, y: jnp.square(x - y) / (jnp.square(y) + 1e-12)
+
+        errors = dict(
+            pr=error_fn(pr_star, pr_pred),
+            pi=error_fn(pi_star, pi_pred),
+            unr=error_fn(unr_star, unr_pred),
+            uzi=error_fn(uzi_star, uzi_pred),
+            zr=error_fn(zr_star, zr_pred),
+            zi=error_fn(zi_star, zi_pred),
         )
         return errors

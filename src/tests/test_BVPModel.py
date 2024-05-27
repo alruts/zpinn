@@ -14,6 +14,10 @@ from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.SIREN import SIREN
 from zpinn.utils import flatten_pytree
 
+
+# treat warnings as errors
+warnings.simplefilter("error")
+
 # create dummy config
 config = OmegaConf.create(
     {
@@ -211,7 +215,7 @@ def test_p_loss():
                 config=config,
             )
 
-            l = bvp.dat_loss(bvp.get_parameters(), next(iter(data_loader)))
+            l = bvp.p_loss(bvp.get_parameters(), next(iter(data_loader)))
 
             assert len(l) == 2
             assert type(l) == tuple
@@ -380,13 +384,8 @@ def test_grad_coeffs():
                 transforms=transforms,
                 config=config,
             )
-            batch = dict(
-                dat_batch=next(iter(data_loader)),
-                dom_batch=next(dom_iterator),
-                bnd_batch=next(bnd_iterator),
-            )
             params, coeffs = bvp.get_parameters(), bvp.coeffs
-            coeffs = bvp.grad_coeffs(params, coeffs, **batch)
+            coeffs = bvp.grad_coeffs(params, coeffs, next(bnd_iterator))
 
             assert len(coeffs) == len(
                 bvp.coeffs
