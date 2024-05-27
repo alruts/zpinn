@@ -1,11 +1,10 @@
-import argparse
 import logging
 import os
 import sys
 
 import mph
+import hydra
 import pandas as pd
-from omegaconf import OmegaConf
 
 sys.path.append("src")
 from zpinn.utils import (
@@ -18,25 +17,11 @@ from zpinn.utils import (
 )
 from miki import miki
 
-# parse arguments
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--config_path",
-    type=str,
-    default="src\data_gen\configs\inf_baffle.yaml",
-    help="path to the config file",
+
+@hydra.main(
+    config_path="configs", config_name="inf_baffle", version_base=hydra.__version__
 )
-args = parser.parse_args()
-
-CONFIG = OmegaConf.load(args.config_path)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
-
-def gen_data(config=CONFIG):
+def gen_data(config):
     # create a temporary directory
     tmp_dir = create_tmp_dir(config.paths.data)
 
@@ -59,46 +44,60 @@ def gen_data(config=CONFIG):
         "frequencies": frequencies,
         "name": name,
     }
-
     client = mph.start()
+
+    # Load the model
     model = client.load(model_path)
 
     # Set the parameters
     set_all_config_params(
         model,
         config,
-        skip_nodes=["paths", "postprocessing", "dataset"],
+        skip_nodes=["paths", "dataset", "downsampling", "nondim"],
     )
 
     # Loop over the frequencies and run the simulations
     for frequency in frequencies:
         print(f"Running simulation for {frequency} Hz")
 
+        # Raw path
+        save_name = f"{name}_{frequency}_Hz"
+        save_name = os.path.join(tmp_dir, save_name)
+
+        # Compute the impedance at the given frequency
         impedance = miki(
             flow_resistivity, frequency, thickness=thickness, normalized=False
         )
 
-        # Set the parameters
-        set_param(model, "frequency", frequency)
-        set_param(model, "Z.real", impedance.real)
-        set_param(model, "Z.imag", impedance.imag)
+        if not os.path.exists(save_name + "_measurement.txt") and not os.path.exists(
+            save_name + "_surface.txt"
+        ):
+            # Set the parameters
+            set_param(model, "frequency", frequency)
+            set_param(model, "Z.real", impedance.real)
+            set_param(model, "Z.imag", impedance.imag)
 
-        # Build, mesh and solve the model
-        model.build()
-        model.mesh()
-        model.solve()
+            # Build, mesh and solve the model
+            model.build()
+            model.mesh()
+            model.solve()
 
-        # Export the measurement grid
-        save_name = f"{name}_{frequency}_Hz"
-        save_name = os.path.join(tmp_dir, save_name)
-        logging.log(logging.INFO, f"Exporting pressure grid to {save_name}")
-        model.export("grid", save_name + "_measurement.txt")
-        model.export("surf", save_name + "_surface.txt")
+            # Export the measurement grid
+            logging.log(logging.INFO, f"Exporting pressure grid to {save_name}")
+            model.export("grid", save_name + "_measurement.txt")
+            model.export("surf", save_name + "_surface.txt")
+
+        else:
+            logging.log(
+                logging.INFO,
+                f"Simulation for {frequency} Hz already exists, loading data from {save_name}",
+            )
 
         # Get the grid and pressure from .txt file
         grid, pressure = get_gt_data(save_name + "_measurement.txt")
         ref_grid, ref_pressure, ref_uz = get_val_data(save_name + "_surface.txt")
 
+        # Reference solution
         ref = {
             "real_pressure": ref_pressure.real,
             "imag_pressure": ref_pressure.imag,
@@ -117,6 +116,9 @@ def gen_data(config=CONFIG):
 
         # Add the data to the dataframe
         df[frequency] = gt
+
+        # clear memory
+        model.clear()
 
         logging.log(logging.INFO, f"Simulation for {frequency} Hz completed")
 
