@@ -5,8 +5,10 @@ import sys
 import equinox as eqx
 import hydra
 import jax.random as jrandom
+from jax.numpy import save, load
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import pickle
 
 sys.path.append("src")
 from experiments.single_freq.utils import setup_loaders, setup_optimizers
@@ -21,7 +23,7 @@ def train_and_evaluate(config):
     date, time = time_stamp.split("\\")[-2], time_stamp.split("\\")[-1]
     writer_path = os.path.join(config.paths.log_dir, date, time)
     writer = SummaryWriter(writer_path)
-    
+
     logging.info(f"Logging to {writer_path}")
 
     # Set random seed
@@ -51,12 +53,14 @@ def train_and_evaluate(config):
     coeffs = bvp.coeffs
 
     # optimizers
-    lr, optimizers = setup_optimizers(config)
+    optimizers = setup_optimizers(config)
 
     opt_states = dict(
         params=optimizers["params"].init(bvp.get_parameters()),
         coeffs=optimizers["coeffs"].init(bvp.coeffs),
     )
+    if config.weighting.scheme == "mle":
+        opt_states["weights"] = optimizers["weights"].init(bvp.weights)
 
     print("Starting training...")
     for step in tqdm(range(config.training.steps)):
@@ -68,25 +72,32 @@ def train_and_evaluate(config):
         )
 
         # step
-        params, coeffs, opt_states = bvp.update(
-            params, weights, coeffs, opt_states, optimizers, batch
-        )
+        if config.weighting.scheme == "grad_norm":
+            params, coeffs, opt_states = bvp.update(
+                params, weights, coeffs, opt_states, optimizers, batch
+            )
 
-        # gradient based weighting schemes
-        if step % config.weighting.update_every == 0:
-            new_w = bvp.compute_weights(params, coeffs, **batch)
-            weights = bvp.update_weights(weights, new_w)
-            
+            if step % config.weighting.update_every == 0:
+                new_w = bvp.compute_weights(params, coeffs, **batch)
+                weights = bvp.update_weights(weights, new_w)
+
+        if config.weighting.scheme == "mle":
+            params, weights, coeffs, opt_states = bvp.update(
+                params, weights, coeffs, opt_states, optimizers, batch
+            )
+
         # logging
         if step % config.logging.log_interval == 0:
-            evaluator(params, coeffs, new_w, batch, step, ref_coords, ref_gt)
+            evaluator(params, coeffs, weights, batch, step, ref_coords, ref_gt)
 
-    # TODO: Test if this works
+    # Save model in hydra output directory
     model_path = (
-        hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-        + "/model_params.eqx"
+        hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + "/model.eqx"
     )
     logging.info(f"Saving model to {model_path}")
-    eqx.tree_serialise_leaves(model_path, params)
 
+    # Create instance of optimised model
+    model = BVPModel(model, transforms, config, params, weights, coeffs)
+    eqx.tree_serialise_leaves(model_path, model)
+    
     writer.close()

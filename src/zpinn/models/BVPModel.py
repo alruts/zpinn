@@ -49,13 +49,19 @@ class BVPModel(eqx.Module):
     u_pred_fn: Callable
     z_pred_fn: Callable
 
-    def __init__(self, model, transforms, config):
+    def __init__(
+        self, model, transforms, config, params=None, weights=None, coeffs=None
+    ):
         self.model = model
         self.momentum = config.weighting.momentum
-        self.weights = dict(config.weighting.initial_weights)
         self.weighting_scheme = config.weighting.scheme
-        self.coeffs = dict(config.impedance_model.initial_guess)
-        self.params = self.model.params()
+        self.weights = (
+            dict(config.weighting.initial_weights) if weights is None else weights
+        )
+        self.coeffs = (
+            dict(config.impedance_model.initial_guess) if coeffs is None else coeffs
+        )
+        self.params = self.model.params() if params is None else params
 
         self.impedance_model = self._init_z_model(config)
         (
