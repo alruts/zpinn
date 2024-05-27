@@ -83,39 +83,21 @@ def preprocess(config=CONFIG):
         downsample_fn(arr, config.downsampling) for arr in (x, y, z)
     ]
 
-    # save the transforms
-    if config.nondim.use_nondim:
-        logging.info("Using non-dimensionalization")
-        transforms = {
-            "x0": x0,
-            "xc": xc,
-            "y0": y0,
-            "yc": yc,
-            "z0": z0,
-            "zc": zc,
-            "f0": f0,
-            "fc": fc,
-            "a0": a0,
-            "ac": ac,
-            "b0": bc,
-            "bc": b0,
-        }
-    else:
-        logging.info("Skipping non-dimensionalization")
-        transforms = {
-            "x0": 0.0,
-            "xc": 1.0,
-            "y0": 0.0,
-            "yc": 1.0,
-            "z0": 0.0,
-            "zc": 1.0,
-            "f0": 0.0,
-            "fc": 1.0,
-            "a0": 0.0,
-            "ac": 1.0,
-            "b0": 0.0,
-            "bc": 1.0,
-        }
+    logging.info("Using non-dimensionalization")
+    transforms = {
+        "x0": x0,
+        "xc": xc,
+        "y0": y0,
+        "yc": yc,
+        "z0": z0,
+        "zc": zc,
+        "f0": f0,
+        "fc": fc,
+        "a0": a0,
+        "ac": ac,
+        "b0": bc,
+        "bc": b0,
+    }
 
     # loop over the frequencies and save the ground truth values
     for idx, frequency in enumerate(config.dataset.frequencies):
