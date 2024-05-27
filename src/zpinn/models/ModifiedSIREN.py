@@ -27,12 +27,12 @@ class ModifiedSIREN(eqx.Module):
     - hidden_omega_0: Frequency of the hidden layers.
 
     [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
-    Wetzstein, “Implicit Neural Representations with Periodic Activation
-    Functions.” arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
+    Wetzstein, "Implicit Neural Representations with Periodic Activation
+    Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
     Available: http://arxiv.org/abs/2006.09661
 
-    [2] S. Wang, Y. Teng, and P. Perdikaris, “Understanding and mitigating
-    gradient pathologies in physics-informed neural networks.” arXiv, Jan.
+    [2] S. Wang, Y. Teng, and P. Perdikaris, "Understanding and mitigating
+    gradient pathologies in physics-informed neural networks." arXiv, Jan.
     13, 2020. Accessed: Apr. 04, 2024. [Online].
     Available: http://arxiv.org/abs/2001.04536
     """

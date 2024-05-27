@@ -30,11 +30,11 @@ def gen_data(config):
     model_path = config.paths.mph
     name = config.dataset.name
     thickness = config.sample.dimensions.lz
-    flow_resistivity = 41_000  # Pa.s/m²
+    flow_resistivity = 41_000  # Pa.s/m2
 
     logging.log(logging.INFO, f"Generating dataset for {name}")
     logging.log(logging.INFO, f"Thickness: {thickness} m")
-    logging.log(logging.INFO, f"Flow resistivity: {flow_resistivity} Pa.s/m²")
+    logging.log(logging.INFO, f"Flow resistivity: {flow_resistivity} Pa.s/m2")
 
     # Initialize the dataset
     df = pd.DataFrame()

@@ -12,14 +12,14 @@ def miki(
     """Calculate the normal surface impedance of a material using the Miki model.
     Assumes planar incidence and a rigid backing.
     
-    [1] Y. Miki, “Acoustical properties of porous materials. Modifications of
-    Delany-Bazley models.,” J. Acoust. Soc. Jpn. (E), J Acoust Soc Jpn E, vol.
-    11, no. 1, pp. 19–24, 1990, doi: 10.1250/ast.11.19.
+    [1] Y. Miki, "Acoustical properties of porous materials. Modifications of
+    Delany-Bazley models.," J. Acoust. Soc. Jpn. (E), J Acoust Soc Jpn E, vol.
+    11, no. 1, pp. 19-24, 1990, doi: 10.1250/ast.11.19.
 
 
     Args:
         flow_resistivity: float
-            Flow resistivity of the material in Pa.s/m².
+            Flow resistivity of the material in Pa.s/m2.
         frequency: float
             Frequency of the sound in Hz.
         thickness: float
