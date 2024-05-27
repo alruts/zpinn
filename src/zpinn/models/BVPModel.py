@@ -45,16 +45,11 @@ class BVPModel(eqx.Module):
     ac: float
     b0: float
     bc: float
-    p_pred_fn: Callable
-    u_pred_fn: Callable
-    z_pred_fn: Callable
 
     def __init__(
         self, model, transforms, config, params=None, weights=None, coeffs=None
     ):
         self.model = model
-        self.momentum = config.weighting.momentum
-        self.weighting_scheme = config.weighting.scheme
         self.weights = (
             dict(config.weighting.initial_weights) if weights is None else weights
         )
@@ -62,7 +57,8 @@ class BVPModel(eqx.Module):
             dict(config.impedance_model.initial_guess) if coeffs is None else coeffs
         )
         self.params = self.model.params() if params is None else params
-
+        self.momentum = config.weighting.momentum
+        self.weighting_scheme = config.weighting.scheme
         self.impedance_model = self._init_z_model(config)
         (
             self.x0,
@@ -84,17 +80,24 @@ class BVPModel(eqx.Module):
         # Initialize the loss criterion
         self.criterion = criteria[config.training.criterion]
 
-        # predict over grid
-        self.p_pred_fn = vmap(
+    def p_pred_fn(self, params, *args):
+        """Predict pressure over a grid."""
+        return vmap(
             vmap(self.p_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )
-        self.u_pred_fn = vmap(
-            vmap(self.un_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )
-        self.z_pred_fn = vmap(
-            vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
-        )
+        )(params, *args)
 
+    def un_pred_fn(self, params, *args):
+        """Predict particle velocity over a grid."""
+        return vmap(
+            vmap(self.un_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )(params, *args)
+
+    def z_pred_fn(self, params, *args):
+        """Predict impedance over a grid."""
+        return vmap(
+            vmap(self.z_net, (None, None, 0, None, None)), (None, 0, None, None, None)
+        )(params, *args)
+    
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
         x0, xc = tfs["x0"], tfs["xc"]
@@ -423,10 +426,10 @@ class BVPModel(eqx.Module):
         z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
         zr_star, zi_star = z_cmplx.real, z_cmplx.imag
 
-        x, y, z, f = self.bvp.unpack_coords(coords)
-        pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))
-        unr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(x, y, z, f))
-        zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
+        x, y, z, f = self.unpack_coords(coords)
+        pr_pred, pi_pred = self.p_pred_fn(params, *(x, y, z, f))
+        unr_pred, uni_pred = self.un_pred_fn(params, *(x, y, z, f))
+        zr_pred, zi_pred = self.z_pred_fn(params, *(x, y, z, f))
 
         error_fn = lambda x, y: jnp.linalg.norm(x - y) / (jnp.linalg.norm(y) + 1e-12)
 
@@ -434,7 +437,7 @@ class BVPModel(eqx.Module):
             pr=error_fn(pr_star, pr_pred),
             pi=error_fn(pi_star, pi_pred),
             unr=error_fn(unr_star, unr_pred),
-            uzi=error_fn(uzi_star, uzi_pred),
+            uni=error_fn(uzi_star, uni_pred),
             zr=error_fn(zr_star, zr_pred),
             zi=error_fn(zi_star, zi_pred),
         )
@@ -452,10 +455,10 @@ class BVPModel(eqx.Module):
         z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
         zr_star, zi_star = z_cmplx.real, z_cmplx.imag
 
-        x, y, z, f = self.bvp.unpack_coords(coords)
-        pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))
-        unr_pred, uzi_pred = self.bvp.uz_pred_fn(params, *(x, y, z, f))
-        zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
+        x, y, z, f = self.unpack_coords(coords)
+        pr_pred, pi_pred = self.p_pred_fn(params, *(x, y, z, f))
+        unr_pred, uni_pred = self.un_pred_fn(params, *(x, y, z, f))
+        zr_pred, zi_pred = self.z_pred_fn(params, *(x, y, z, f))
 
         error_fn = lambda x, y: jnp.square(x - y) / (jnp.square(y) + 1e-12)
 
@@ -463,7 +466,7 @@ class BVPModel(eqx.Module):
             pr=error_fn(pr_star, pr_pred),
             pi=error_fn(pi_star, pi_pred),
             unr=error_fn(unr_star, unr_pred),
-            uzi=error_fn(uzi_star, uzi_pred),
+            uni=error_fn(uzi_star, uni_pred),
             zr=error_fn(zr_star, zr_pred),
             zi=error_fn(zi_star, zi_pred),
         )

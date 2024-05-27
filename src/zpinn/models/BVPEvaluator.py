@@ -79,7 +79,7 @@ class BVPEvaluator:
         x, y, z, f = self.bvp.unpack_coords(grid)
 
         pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))
-        ur_pred, ui_pred = self.bvp.u_pred_fn(params, *(x, y, z, f))
+        ur_pred, ui_pred = self.bvp.un_pred_fn(params, *(x, y, z, f))
         zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
 
         _, ax = plt.subplots(figsize=(5, 5))

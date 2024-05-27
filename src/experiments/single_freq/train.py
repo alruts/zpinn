@@ -20,7 +20,8 @@ from zpinn.models.SIREN import SIREN
 
 def train_and_evaluate(config):
     time_stamp = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
-    date, time = time_stamp.split("\\")[-2], time_stamp.split("\\")[-1]
+    head, time = os.path.split(time_stamp)
+    _, date = os.path.split(head)
     writer_path = os.path.join(config.paths.log_dir, date, time)
     writer = SummaryWriter(writer_path)
 

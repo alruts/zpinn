@@ -22,7 +22,7 @@ warnings.simplefilter("error")
 config = OmegaConf.create(
     {
         "paths": {
-            "dataset": "C:\\Users\\STNj\\dtu\\thesis\\zpinn\\data\\processed\\inf_baffle.pkl"
+            "dataset": "./data/processed/inf_baffle.pkl"
         },
         "model": {
             "in_features": 4,

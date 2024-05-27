@@ -3,7 +3,7 @@ import jax
 import train
 
 @hydra.main(
-    config_path=".\configs",
+    config_path="configs",
     config_name="default",
     version_base=hydra.__version__,
 )
