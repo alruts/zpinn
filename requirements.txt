@@ -1,5 +1,4 @@
 equinox==0.11.4
-h5py==3.10.0
 hydra-core==1.3.2
 jax==0.4.25
 matplotlib==3.7.2

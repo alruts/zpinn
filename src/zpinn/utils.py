@@ -1,7 +1,6 @@
 import os
 import shutil
 
-import h5py
 import numpy as np
 import pandas as pd
 import equinox as eqx
@@ -59,17 +58,6 @@ def get_val_data(
     p = get_pressure(df, grid)
     u = get_pvel(df, grid)
     return grid, p, u
-
-
-def load_data(filename, frequency):
-    with h5py.File(filename, "r") as f:
-        # Extract data from the first group (assuming only one group)
-        group = f[str(frequency)]
-        grid = group["grid"][()]
-        pressure = group["pressure"][()]
-        impedance = group["impedance"][()]
-
-    return grid, pressure, impedance
 
 
 def downsample_grid(grid, factor):
