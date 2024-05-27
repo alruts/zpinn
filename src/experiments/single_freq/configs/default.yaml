@@ -7,11 +7,11 @@ paths:
   log_dir: tensorboards\single_freq
 
 training:
-  steps: 20_000
+  steps: 80_000
   criterion: mse
   optim:
     params:
-      lr: 1e-4
+      lr: 1e-3
       transition_steps: 2000
       decay_rate: 0.9  
     coeffs:
@@ -29,7 +29,7 @@ architecture:
   
 batch:
   data:
-    batch_size: 64
+    batch_size: 32
     shuffle: true
     restrict_to:
       # x: # min, max
@@ -45,7 +45,7 @@ batch:
       - 250
 
   domain:
-    batch_size: 64
+    batch_size: 4096
     limits:
       x:
       - -0.5
@@ -67,7 +67,7 @@ batch:
       f: uniform
 
   boundary:
-    batch_size: 64
+    batch_size: 1024
     limits:
       x:
       - -0.5

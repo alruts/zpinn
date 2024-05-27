@@ -50,6 +50,7 @@
 # Ignore specific folders 
 **/.pytest_cache/
 **/outputs/
+**/multirun/
 **/tensorboards/
 **/comsol/
 **/notebooks/
