@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config_path",
     type=str,
-    default="src\data_gen\configs\inf_baffle.yaml",
+    default="src\dataset\configs\inf_baffle.yaml",
     help="path to the config file",
 )
 args = parser.parse_args()
@@ -63,8 +63,8 @@ def preprocess(config=CONFIG):
     f = np.array(config.dataset.frequencies, dtype=np.float32)
 
     # compute shift values
-    a0 = np.mean(_p_re)
-    b0 = np.mean(_p_im)
+    a0 = np.mean(_p_re) if config.nondim.p.shift else 0
+    b0 = np.mean(_p_im) if config.nondim.p.shift else 0
     x0 = np.mean(x) if config.nondim.x.shift else 0
     y0 = np.mean(y) if config.nondim.y.shift else 0
     z0 = np.mean(z) if config.nondim.z.shift else 0
@@ -95,8 +95,8 @@ def preprocess(config=CONFIG):
         "fc": fc,
         "a0": a0,
         "ac": ac,
-        "b0": bc,
-        "bc": b0,
+        "b0": b0,
+        "bc": bc,
     }
 
     # loop over the frequencies and save the ground truth values
