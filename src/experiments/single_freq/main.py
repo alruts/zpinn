@@ -2,6 +2,7 @@ import hydra
 import jax
 import train
 
+
 @hydra.main(
     config_path="configs",
     config_name="default",
