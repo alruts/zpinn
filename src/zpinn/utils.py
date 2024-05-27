@@ -170,7 +170,6 @@ def set_all_config_params(model: any, cfg: DictConfig, skip_nodes: list[str] = [
         nodes (list[str]): list of nodes to use in the configuration
     """
     leaf_nodes = get_all_leaf_nodes(cfg, skip_nodes=skip_nodes)
-    print(leaf_nodes)
     for param, value in leaf_nodes:
         set_param(model, param, value)
 
@@ -266,3 +265,13 @@ def transform(data, shift, scale):
 def flatten_pytree(pytree):
     """Flattens a pytree."""
     return ravel_pytree(pytree)[0]
+
+def cat_batches(batches):
+    """Concatenates a list of batches."""
+    result = dict(
+        x=jnp.array([]), y=jnp.array([]), z=jnp.array([]), f=jnp.array([])
+    )
+    for batch in batches:
+        for key in batch.keys():
+            result[key] = jnp.concatenate([result[key], batch[key]], axis=0)
+    return result
