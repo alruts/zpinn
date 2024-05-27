@@ -7,6 +7,7 @@ import sys
 sys.path.append("src")
 from zpinn.utils import flatten_pytree, transform
 from zpinn.plot.fields import scalar_field
+from zpinn.constants import _c0, _rho0
 
 
 class BVPEvaluator:
@@ -29,6 +30,22 @@ class BVPEvaluator:
         for key, val in coeffs.items():
             self.writer.add_scalar("Coeffs/" + key, val.item(), step)
 
+    def log_impedance(self, coeffs, ref_gt, step):
+        zr, zi = self.bvp.impedance_model(coeffs, ref_gt["f"])
+        zr_star, zi_star = ref_gt["real_impedance"] / (_rho0 * _c0), ref_gt[
+            "imag_impedance"
+        ] / (_rho0 * _c0)
+        self.writer.add_scalar("Impedance/Real", zr.item(), step)
+        self.writer.add_scalar("Impedance/Imag", zi.item(), step)
+        self.writer.add_scalar("Impedance/RealStar", zr_star.item(), step)
+        self.writer.add_scalar("Impedance/ImagStar", zi_star.item(), step)
+        self.writer.add_scalar(
+            "Impedance/RealError", jnp.abs(zr - zr_star).item(), step
+        )
+        self.writer.add_scalar(
+            "Impedance/ImagError", jnp.abs(zi - zi_star).item(), step
+        )
+
     def log_grads(self, params, coeffs, batch, step):
         grads = jax.jacrev(self.bvp.losses, argnums=0)(params, coeffs, **batch)
 
@@ -38,40 +55,24 @@ class BVPEvaluator:
 
     def log_errors(self, params, coords, ref, step):
         # Compute the L2 errors
-        error_grids = self.bvp.compute_l2_error_grid(params, coords, ref)
+        errors_grid = self.bvp.compute_l2_error_grid(params, coords, ref)
         x, y, z, f = self.bvp.unpack_coords(coords)
-
         pl_kwargs = dict(
             cbar_label="Relative L2 Error",
             balanced_cmap=False,
             cmap="viridis",
         )
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(error_grids["pr"], x, y, ax=ax, **pl_kwargs)
-        self.writer.add_figure("Errors/pr", plt.gcf(), step)
-        plt.close()
 
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(error_grids["pi"], x, y, ax=ax, **pl_kwargs)
-        self.writer.add_figure("Errors/pi", plt.gcf(), step)
-        plt.close()
+        # Log the L2 errors as figures
+        for key, val in errors_grid.items():
+            _, ax = plt.subplots(figsize=(5, 5))
+            ax = scalar_field(val, x, y, ax=ax, **pl_kwargs)
+            self.writer.add_figure("L2Errors/" + key, plt.gcf(), step)
+            plt.close()
 
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(error_grids["unr"], x, y, ax=ax, **pl_kwargs)
-        self.writer.add_figure("Errors/unr", plt.gcf(), step)
-        plt.close()
-
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(error_grids["uni"], x, y, ax=ax, **pl_kwargs)
-        self.writer.add_figure("Errors/uni", plt.gcf(), step)
-        plt.close()
-
-        self.writer.add_figure("Errors/zi", plt.gcf(), step)
-        plt.close()
-        
-        # Compute the L2 errors
-        error_grids = self.bvp.compute_l2_error(params, coords, ref)
-        for key, val in error_grids.items():
+        # Compute the total  L2 errors as scalars
+        errors = self.bvp.compute_l2_error(params, coords, ref)
+        for key, val in errors.items():
             self.writer.add_scalar("PercentErrors/" + key, val.item(), step)
 
     def log_preds(self, params, grid, step):
@@ -82,37 +83,22 @@ class BVPEvaluator:
         ur_pred, ui_pred = self.bvp.un_pred_fn(params, *(x, y, z, f))
         zr_pred, zi_pred = self.bvp.z_pred_fn(params, *(x, y, z, f))
 
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(pr_pred, x, y, ax=ax)
-        self.writer.add_figure("Predictions/pr", plt.gcf(), step)
-        plt.close()
+        preds = dict(
+            pr=pr_pred,
+            pi=pi_pred,
+            ur=ur_pred,
+            ui=ui_pred,
+            zr=zr_pred,
+            zi=zi_pred,
+        )
 
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(pi_pred, x, y, ax=ax)
-        self.writer.add_figure("Predictions/pi", plt.gcf(), step)
-        plt.close()
+        for key, val in preds.items():
+            _, ax = plt.subplots(figsize=(5, 5))
+            ax = scalar_field(val, x, y, ax=ax)
+            self.writer.add_figure("Predictions/" + key, plt.gcf(), step)
+            plt.close()
 
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(ur_pred, x, y, ax=ax, cbar_label="Particle Velocity (m/s)")
-        self.writer.add_figure("Predictions/uzr", plt.gcf(), step)
-        plt.close()
-
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(ui_pred, x, y, ax=ax, cbar_label="Particle Velocity (m/s)")
-        self.writer.add_figure("Predictions/uzi", plt.gcf(), step)
-        plt.close()
-
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(zr_pred, x, y, ax=ax, cbar_label="Impedance (Pa.s/m)")
-        self.writer.add_figure("Predictions/zr", plt.gcf(), step)
-        plt.close()
-
-        _, ax = plt.subplots(figsize=(5, 5))
-        ax = scalar_field(zi_pred, x, y, ax=ax, cbar_label="Impedance (Pa.s/m)")
-        self.writer.add_figure("Predictions/zi", plt.gcf(), step)
-        plt.close()
-
-    def __call__(self, params, coeffs, weights, batch, step, ref_coords, ref):
+    def __call__(self, params, coeffs, weights, batch, step, ref_coords, ref_gt):
         ref_coords = dict(
             x=transform(ref_coords["x"], self.bvp.x0, self.bvp.xc),
             y=transform(ref_coords["y"], self.bvp.y0, self.bvp.yc),
@@ -129,11 +115,14 @@ class BVPEvaluator:
         if self.config.logging.log_coeffs:
             self.log_coeffs(coeffs, step)
 
+        if self.config.logging.log_impedance:
+            self.log_impedance(coeffs, ref_gt, step)
+
         if self.config.logging.log_grads:
             self.log_grads(params, coeffs, batch, step)
 
         if self.config.logging.log_errors:
-            self.log_errors(params, ref_coords, ref, step)
+            self.log_errors(params, ref_coords, ref_gt, step)
 
         if self.config.logging.log_preds:
             self.log_preds(params, ref_coords, step)
