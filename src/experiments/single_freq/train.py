@@ -63,7 +63,7 @@ def train_and_evaluate(config):
     if config.weighting.scheme == "mle":
         opt_states["weights"] = optimizers["weights"].init(bvp.weights)
 
-    print("Starting training...")
+    print("Starting training, waiting JIT compilation...")
     for step in tqdm(range(config.training.steps)):
         # load batch
         batch = dict(
