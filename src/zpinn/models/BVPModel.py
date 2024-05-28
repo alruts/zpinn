@@ -144,14 +144,14 @@ class BVPModel(eqx.Module):
 
     def psi_net(self, params, *args, part=None):
         """Nondimensionalized pressure network."""
-        p = self.apply_model(params, *args)
+        psi = self.apply_model(params, *args)
 
         if part == "real":
-            return p[0]
+            return psi[0]
         elif part == "imag":
-            return p[1]
+            return psi[1]
         else:
-            return p[0], p[1]
+            return psi[0], psi[1]
 
     def p_net(self, params, *args):
         """Pressure network."""

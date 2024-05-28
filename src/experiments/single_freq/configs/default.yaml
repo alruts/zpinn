@@ -3,8 +3,8 @@ experiment:
   description: Single frequency impedance inversion
 
 paths:
-  dataset: data\processed\inf_baffle.pkl
-  log_dir: tensorboards\single_freq
+  dataset: data/processed/inf_baffle.pkl
+  log_dir: tensorboards/single_freq
 
 training:
   steps: 80_000
