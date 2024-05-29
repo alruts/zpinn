@@ -29,6 +29,7 @@ class BVPModel(eqx.Module):
     momentum: float
     impedance_model: Callable
     is_normalized: bool
+    use_boundary_loss: bool
     coeffs: dict
     weights: dict
     weighting_scheme: str
@@ -50,9 +51,15 @@ class BVPModel(eqx.Module):
         self, model, transforms, config, params=None, weights=None, coeffs=None
     ):
         self.model = model
+        self.use_boundary_loss = config.weighting.use_boundary_loss
         self.weights = (
             dict(config.weighting.initial_weights) if weights is None else weights
         )
+        # remove boundary loss weights if not using boundary loss
+        if not self.use_boundary_loss:
+            self.weights.pop("bc_re")
+            self.weights.pop("bc_im")
+
         self.coeffs = (
             dict(config.impedance_model.initial_guess) if coeffs is None else coeffs
         )
@@ -314,22 +321,31 @@ class BVPModel(eqx.Module):
         # concatenate the batches
         pde_re, pde_im = self.r_loss(params, cat_batches([dom_batch, bnd_batch]))
 
-        # boundary loss
-        bc_re, bc_im = self.z_loss(params, coeffs, bnd_batch)
+        if self.use_boundary_loss:
+            # boundary loss
+            bc_re, bc_im = self.z_loss(params, coeffs, bnd_batch)
 
-        return {
-            "data_re": data_re,
-            "data_im": data_im,
-            "pde_re": pde_re,
-            "pde_im": pde_im,
-            "bc_re": bc_re,
-            "bc_im": bc_im,
-        }
+            return {
+                "data_re": data_re,
+                "data_im": data_im,
+                "pde_re": pde_re,
+                "pde_im": pde_im,
+                "bc_re": bc_re,
+                "bc_im": bc_im,
+            }
+
+        else:
+            return {
+                "data_re": data_re,
+                "data_im": data_im,
+                "pde_re": pde_re,
+                "pde_im": pde_im,
+            }
 
     @eqx.filter_jit
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
-        alpha = 10.0
+        alpha = 1.0
 
         logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x)))
 
@@ -347,8 +363,10 @@ class BVPModel(eqx.Module):
         losses = self.losses(params, coeffs, dat_batch, dom_batch, bnd_batch)
 
         if self.weighting_scheme == "grad_norm":
-            # bc_strategy
-            losses = self.bc_strategy(losses)
+            if self.use_boundary_loss:
+                # Apply boundary condition balancing strategy
+                losses = self.bc_strategy(losses)
+
             # Compute weighted loss
             weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
             # Sum weighted losses
