@@ -22,7 +22,7 @@ def numpy_collate(batch):
 
 
 class PressureDataset(Dataset):
-    """Dataset class for 3D data."""
+    """Dataset class for 4D data."""
 
     def __init__(self, path):
         self.path = path
@@ -167,15 +167,13 @@ class PressureDataset(Dataset):
 class BaseSampler(Dataset):
     """Base class for samplers."""
 
-    def __init__(self, batch_size, rng_key=jrandom.PRNGKey(1234)):
+    def __init__(self, batch_size, rng_key=jrandom.PRNGKey(0)):
         self.batch_size = batch_size
         self.key = rng_key
-        # self.num_devices = local_device_count()
 
     def __getitem__(self, index):
         "Generate one batch of data"
         self.key, subkey = jrandom.split(self.key)
-        # keys = jrandom.split(subkey, self.num_devices)
         batch = self.gen_data(subkey)
         return batch
 
