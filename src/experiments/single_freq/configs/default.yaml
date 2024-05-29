@@ -5,15 +5,16 @@ experiment:
 paths:
   dataset: data/processed/inf_baffle.pkl
   log_dir: tensorboards/single_freq
+  initial_model: ~
 
 training:
-  steps: 80_000
+  steps: 20_000
   criterion: mse
   optim:
     params:
       lr: 1e-3
       transition_steps: 2000
-      decay_rate: 0.9  
+      decay_rate: 0.9
     coeffs:
       lr: 1e-2
 
@@ -92,6 +93,7 @@ random:
 
 weighting:
   scheme: grad_norm # or 'mle'
+  use_boundary_loss: true
   update_every: 200
   momentum: 0.9
   initial_weights:
