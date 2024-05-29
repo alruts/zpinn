@@ -38,6 +38,8 @@ def train_and_evaluate(config):
         model = ModifiedSIREN(**config.architecture, key=subkey)
     else:
         raise ValueError(f"Invalid architecture: {config.architecture}")
+    
+    
 
     # data iterators
     dataloader, dom_sampler, bnd_sampler, ref_coords, ref_gt, transforms = (
@@ -47,6 +49,11 @@ def train_and_evaluate(config):
     # bvp
     bvp = BVPModel(model, transforms, config)
     evaluator = BVPEvaluator(bvp, writer, config)
+
+    # load initial model if provided
+    if config.paths.initial_model is not None:
+        model = eqx.tree_deserialise_leaves(config.paths.initial_model, bvp)
+        logging.info(f"Loaded model from {config.paths.initial_model}")
 
     # initial params, weights and coeffs
     params = bvp.get_parameters()
@@ -95,10 +102,8 @@ def train_and_evaluate(config):
     model_path = (
         hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + "/model.eqx"
     )
-    logging.info(f"Saving model to {model_path}")
-
-    # Create instance of optimised model
-    model = BVPModel(model, transforms, config, params, weights, coeffs)
-    eqx.tree_serialise_leaves(model_path, model)
+    bvp = BVPModel(model, transforms, config, params, None, coeffs)
+    eqx.tree_serialise_leaves(model_path, bvp)
+    logging.info(f"Model saved to {model_path}")
     
     writer.close()
