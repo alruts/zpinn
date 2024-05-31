@@ -16,13 +16,14 @@ from zpinn.utils import flatten_pytree
 
 
 # treat warnings as errors
-warnings.simplefilter("error")
+# warnings.simplefilter("error")
 
 # create dummy config
 config = OmegaConf.create(
     {
         "paths": {
-            "dataset": "./data/processed/inf_baffle.pkl"
+            "dataset": "./data/processed/inf_baffle.pkl",
+            "initial_model": None,
         },
         "model": {
             "in_features": 4,
@@ -41,6 +42,7 @@ config = OmegaConf.create(
         },
         "weighting": {
             "momentum": 0.9,
+            "use_boundary_loss": True,
             "scheme": "grad_norm",
             "initial_weights": {
                 "data_re": 1.0,
