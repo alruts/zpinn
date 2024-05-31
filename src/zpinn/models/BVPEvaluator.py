@@ -55,25 +55,23 @@ class BVPEvaluator:
 
     def log_errors(self, params, coords, ref, step):
         # Compute the L2 errors
-        errors_grid = self.bvp.compute_l2_error_grid(params, coords, ref)
+        errors_grid = self.bvp.compute_relative_error(params, coords, ref)
         x, y, z, f = self.bvp.unpack_coords(coords)
         pl_kwargs = dict(
-            cbar_label="Relative L2 Error",
-            balanced_cmap=False,
-            cmap="viridis",
+            cbar_label="Relative Error",
         )
 
-        # Log the L2 errors as figures
+        # Log the relative errors as figures
         for key, val in errors_grid.items():
             _, ax = plt.subplots(figsize=(5, 5))
             ax = scalar_field(val, x, y, ax=ax, **pl_kwargs)
-            self.writer.add_figure("L2Errors/" + key, plt.gcf(), step)
+            self.writer.add_figure("RelErrors/" + key, plt.gcf(), step)
             plt.close()
 
         # Compute the total  L2 errors as scalars
         errors = self.bvp.compute_l2_error(params, coords, ref)
         for key, val in errors.items():
-            self.writer.add_scalar("PercentErrors/" + key, val.item(), step)
+            self.writer.add_scalar("PercentL2Errors/" + key, val.item(), step)
 
     def log_preds(self, params, grid, step):
 

@@ -9,7 +9,7 @@ from jax.tree_util import tree_leaves, tree_map, tree_reduce
 
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
-from zpinn.impedance_models import RMK_plus_1, constant_impedance
+from zpinn.impedance_models import RMK_plus_1, constant_impedance, miki
 from zpinn.utils import flatten_pytree, cat_batches
 
 criteria = {
@@ -66,7 +66,7 @@ class BVPModel(eqx.Module):
         self.params = self.model.params() if params is None else params
         self.momentum = config.weighting.momentum
         self.weighting_scheme = config.weighting.scheme
-        self.impedance_model = self._init_z_model(config)
+        self.impedance_model = self._init_impedance_model(config)
         (
             self.x0,
             self.xc,
@@ -97,16 +97,20 @@ class BVPModel(eqx.Module):
         b0, bc = tfs["b0"], tfs["bc"]
         return x0, xc, y0, yc, z0, zc, f0, fc, a0, ac, b0, bc
 
-    def _init_z_model(self, config):
+    def _init_impedance_model(self, config):
         # Initialize the coefficients based on the impedance model
         if config.impedance_model.type == "single_freq":
             z_model = constant_impedance
-
         elif config.impedance_model.type == "RMK+1":
             z_model = RMK_plus_1
+        elif config.impedance_model.type == "miki":
+            z_model = lambda coeffs, f, normalized: miki(
+                coeffs["flow_resistivity"], f, 0.05, normalized
+            )
+
         else:
             raise NotImplementedError(
-                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1']"
+                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1', 'miki']"
             )
 
         return z_model
@@ -461,7 +465,7 @@ class BVPModel(eqx.Module):
         return errors
 
     @eqx.filter_jit
-    def compute_l2_error_grid(self, params, coords, ref):
+    def compute_relative_error(self, params, coords, ref):
         """Compute relative L2 error."""
         pr_star = ref["real_pressure"]
         pi_star = ref["imag_pressure"]
@@ -477,7 +481,7 @@ class BVPModel(eqx.Module):
         unr_pred, uni_pred = self.un_pred_fn(params, *(x, y, z, f))
         zr_pred, zi_pred = self.z_pred_fn(params, *(x, y, z, f))
 
-        error_fn = lambda x, y: jnp.square(x - y) / (jnp.square(y) + 1e-12)
+        error_fn = lambda x, y: (x - y) / (jnp.abs(x) + jnp.abs(y))
 
         errors = dict(
             pr=error_fn(pr_star, pr_pred),
