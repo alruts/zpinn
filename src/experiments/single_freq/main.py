@@ -9,11 +9,9 @@ import train
     version_base=hydra.__version__,
 )
 def main(config):
-
     # Run the training and evaluation loop
     train.train_and_evaluate(config)
 
 
 if __name__ == "__main__":
-
     main()
