@@ -27,7 +27,7 @@ def miki(
         normalized: bool
             Whether to return the normalized impedance or not.
     Returns:
-        float: Normal surface impedance of the material.
+        float: specific impedance of the material.
     """
     # Calculate the angular frequency
     angular_frequency = 2 * pi * frequency
@@ -35,7 +35,7 @@ def miki(
     # Calculate the specific impedance of the material
     R = 1 + 0.070 * (frequency / flow_resistivity) ** -0.632
     X = -0.107 * (frequency / flow_resistivity) ** -0.632
-    impedance = R + 1j * X
+    Z = R + 1j * X
 
     # Calculate propagation constants
     alpha = angular_frequency / _c0 * (0.160 * (frequency / flow_resistivity) ** -0.618)
@@ -45,11 +45,11 @@ def miki(
     gamma = alpha + 1j * beta
 
     # Calculate the normalized impedance
-    impedance /= tanh(gamma * thickness)
+    Z /= tanh(gamma * thickness)
 
     if not normalized:
         # unnormalize the impedance
-        impedance *= _rho0 * _c0
+        Z *= _rho0 * _c0
 
-    return impedance
+    return Z
 
