@@ -1,3 +1,4 @@
+
 import argparse
 import sys
 
@@ -21,7 +22,7 @@ parser.add_argument(
     "--dataset_config",
     type=str,
     default=None,
-    help="path to the experiment config file",
+    help="path to the dataset config file",
 )
 args = parser.parse_args()
 
@@ -129,8 +130,8 @@ def main(config=CONFIG):
     plt.tight_layout()
 
     # export as as pgf and show
-    ax.legend(loc="upper right", fontsize="small")
-    plt.savefig("baffle_with_datapoints.pgf", pad_inches=0)
+    # ax.legend(loc="upper right", fontsize="small")
+    # plt.savefig("baffle_with_datapoints.pgf", pad_inches=0)
     plt.show()
 
 
