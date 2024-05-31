@@ -62,7 +62,7 @@ dataset:
   ]
 
 # --- Data processing configuration ---
-downsampling: 16
+downsampling: 10
 nondim: 
   f: 
     shift: false #
