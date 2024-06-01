@@ -103,6 +103,11 @@ def preprocess(config=CONFIG):
     for idx, frequency in enumerate(config.dataset.frequencies):
         # Load the data
         data = raw_df[frequency]
+        
+        
+        ref = data.ref
+        ref["real_velocity"] = -ref["real_velocity"]
+        ref["imag_velocity"] = -ref["imag_velocity"]
 
         # save ground truth and transforms to the processed dataframe
         gt = {

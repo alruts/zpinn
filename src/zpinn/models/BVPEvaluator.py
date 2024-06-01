@@ -74,7 +74,6 @@ class BVPEvaluator:
             self.writer.add_scalar("PercentL2Errors/" + key, val.item(), step)
 
     def log_preds(self, params, grid, step):
-
         x, y, z, f = self.bvp.unpack_coords(grid)
 
         pr_pred, pi_pred = self.bvp.p_pred_fn(params, *(x, y, z, f))

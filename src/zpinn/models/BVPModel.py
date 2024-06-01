@@ -324,6 +324,7 @@ class BVPModel(eqx.Module):
 
         # concatenate the batches
         pde_re, pde_im = self.r_loss(params, cat_batches([dom_batch, bnd_batch]))
+        # pde_re, pde_im = self.r_loss(params, bnd_batch)
 
         if self.use_boundary_loss:
             # boundary loss
@@ -369,7 +370,8 @@ class BVPModel(eqx.Module):
         if self.weighting_scheme == "grad_norm":
             if self.use_boundary_loss:
                 # Apply boundary condition balancing strategy
-                losses = self.bc_strategy(losses)
+                # losses = self.bc_strategy(losses)
+                pass
 
             # Compute weighted loss
             weighted_losses = tree_map(lambda x, y: x * y, losses, weights)

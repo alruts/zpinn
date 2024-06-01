@@ -5,10 +5,10 @@ experiment:
 paths:
   dataset: data/processed/shoebox.pkl
   log_dir: tensorboards/single_freq
-  initial_model: ~
+  initial_model: C:/Users/STNj/dtu/thesis/zpinn/outputs/2024-05-31/17-07-31/model.eqx
 
 training:
-  steps: 80_000
+  steps: 40_000
   criterion: mse
   optim:
     params:
@@ -17,8 +17,6 @@ training:
       decay_rate: 0.9
     coeffs:
       lr: 1e-3
-      transition_steps: 10_000
-      decay_rate: 0.9
 
 architecture:
   name: modified_siren
@@ -105,14 +103,14 @@ weighting:
     bc_re: 1.0
     bc_im: 1.0
   use_boundary_loss: false
-  transition_step: ~
+  transition_step: 0
 
 impedance_model: 
   type: single_freq
   normalized: true
   initial_guess:
-    alpha: 0.0
-    beta: 0.0
+    alpha: 1.7456372
+    beta: -3.496335
 
 logging:
   log_interval: 100
