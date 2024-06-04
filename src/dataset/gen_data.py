@@ -15,8 +15,7 @@ from zpinn.utils import (
     set_all_config_params,
     set_param,
 )
-from miki import miki
-
+from zpinn.impedance_models import miki
 
 @hydra.main(
     config_path="configs", config_name="inf_baffle", version_base=hydra.__version__
