@@ -33,7 +33,12 @@ def get_loaders(config, custom_transforms=None, restrict_to=None):
         distributions=config.batch.boundary.distributions,
         transforms=transforms,
     )
-    
-    ref_coords, ref_gt = dataset.get_reference(f=config.batch.data.restrict_to["f"][0])
+
+    try:
+        ref_coords, ref_gt = dataset.get_reference(
+            f=config.batch.data.restrict_to["f"][0]
+        )
+    except:
+        ref_coords, ref_gt = dataset.get_reference(1000)
 
     return dataloader, dom_sampler, bnd_sampler, ref_coords, ref_gt, transforms
