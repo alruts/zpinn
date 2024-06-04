@@ -1,18 +1,15 @@
 import logging
-import os
 import sys
-
-# Block GPU from tensorflow
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 import equinox as eqx
 import hydra
 import jax.random as jrandom
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import jax.numpy as jnp
 
 sys.path.append("src")
-from experiments.single_freq.utils import setup_loaders, setup_optimizers
+from experiments.domain_3d.utils import setup_loaders, setup_optimizers
 from zpinn.models.BVPEvaluator import BVPEvaluator
 from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
@@ -90,7 +87,7 @@ def train_and_evaluate(config):
             evaluator.bvp = bvp  # reset evaluator
             # reset weights
             weights = bvp.weights  
-            new_w = bvp.compute_weights(params, coeffs, **batch)
+            new_w = bvp.compute_weights(params, coeffs, **batch, argnums=0)
             weights = bvp.update_weights(weights, new_w)
 
 
@@ -101,13 +98,20 @@ def train_and_evaluate(config):
             )
 
             if step % config.weighting.update_every == 0:
-                new_w = bvp.compute_weights(params, coeffs, **batch)
+                new_w = bvp.compute_weights(params, coeffs, **batch, argnums=0)
                 weights = bvp.update_weights(weights, new_w)
+                
+                # new_w = bvp.compute_weights(params, coeffs, **batch, argnums=1)
+                # c_weights = bvp.update_weights(weights, new_w)
 
         if config.weighting.scheme == "mle":
             params, weights, coeffs, opt_states = bvp.update(
                 params, weights, coeffs, opt_states, optimizers, batch
             )
+            
+            # weight clipping
+            weights["bc_im"] = jnp.maximum(weights["bc_im"], 1.0)
+            weights["bc_re"] = jnp.maximum(weights["bc_re"], 1.0)
 
         # logging
         if step % config.logging.log_interval == 0:

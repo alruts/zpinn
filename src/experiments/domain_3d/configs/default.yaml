@@ -3,20 +3,20 @@ experiment:
   description: Single frequency impedance inversion
 
 paths:
-  dataset: data/processed/inf_baffle.pkl
+  dataset: data/processed/shoebox.pkl
   log_dir: tensorboards/single_freq
   initial_model: ~
 
 training:
-  steps: 20_000
-  criterion: mae
+  steps: 80_000
+  criterion: mse
   optim:
     params:
       lr: 1e-3
       transition_steps: 2000
       decay_rate: 0.9
     coeffs:
-      lr: 1e-2
+      lr: 1e-3
       transition_steps: 10_000
       decay_rate: 0.9
 
@@ -24,7 +24,7 @@ architecture:
   name: modified_siren
   in_features: 4
   out_features: 2
-  hidden_features: 32
+  hidden_features: 8
   hidden_layers: 3
   outermost_linear: true
   first_omega_0: 30.0
@@ -48,7 +48,7 @@ batch:
       - 250
 
   domain:
-    batch_size: 64
+    batch_size: 128
     limits:
       x:
       - -0.5
@@ -108,15 +108,11 @@ weighting:
   transition_step: ~
 
 impedance_model: 
-  type: RMK+1
+  type: single_freq
   normalized: true
   initial_guess:
-    K: 0.0
-    R_1: 0.0
-    M: 0.0
-    G: 0.0
-    gamma: 0.0
-
+    alpha: 0.0
+    beta: 0.0
 
 logging:
   log_interval: 100
