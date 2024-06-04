@@ -1,4 +1,5 @@
 import sys
+import os
 
 import matplotlib.pyplot as plt
 from omegaconf import OmegaConf
@@ -25,9 +26,10 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.dataset_config is None:
-    raise ValueError("Please provide a path to the config files")
+    raise ValueError("Please provide a path to the config")
 
 CONFIG = OmegaConf.load(args.dataset_config)
+
 
 def main(config=CONFIG):
 
@@ -65,9 +67,9 @@ def main(config=CONFIG):
                 config.sample.center.y,
                 z,
             ),
-            draw_height_lines=True,
+            draw_height_lines=False,
             color="b",
-            label=f"Measurement aperture {idx} @ {z:.4f} m",
+            label=f"Measurement aperture {idx} @ {z*1000:.0f} mm",
         )
 
     # draw the sample surface
@@ -75,15 +77,52 @@ def main(config=CONFIG):
         ax,
         1,
         1,
-        center=(config.sample.center.x, config.sample.center.y, config.sample.dimensions.lz),
+        center=(
+            config.sample.center.x,
+            config.sample.center.y,
+            config.sample.dimensions.lz / 2,
+        ),
         color="grey",
         alpha=0.5,
         label="Impedance surface",
     )
 
     ax = draw_source(
-        ax, config.source.center.x, config.source.center.y, config.source.center.z, color="r"
+        ax,
+        config.source.center.x,
+        config.source.center.y,
+        config.source.center.z,
+        color="r",
     )
+
+    if hasattr(config, "room"):
+        lx, ly, lz = (
+            config.room.dimensions.lx,
+            config.room.dimensions.ly,
+            config.room.dimensions.lz,
+        )
+        c = config.room.center.x, config.room.center.y, lz / 2
+        ax = draw_shoebox(
+            ax,
+            lx,
+            ly,
+            lz,
+            center=c,
+            label="Room",
+        )
+        # ax = mark_side_lengths(ax, **config.room.dimensions, center=c)
+
+    else:
+        draw_rectangle(
+            ax,
+            1.5,
+            1.5,
+            color="purple",
+            alpha=0.1,
+            label="Infinite Baffle",
+            linestyle="--",
+        )
+        
 
     ax.set_xlabel("$x$ (m)")
     ax.set_ylabel("$y$ (m)")
@@ -98,17 +137,23 @@ def main(config=CONFIG):
     ax.zaxis._axinfo["juggled"] = (1, 2, 2)
 
     # remove the z-axis
-    ax.axis("off")
+    # ax.axis("off")
 
     # modify the view angle
-    ax.view_init(elev=19, azim=150)
+    ax.view_init(elev=12, azim=155)
 
     # set legend
+    ax.legend(
+        loc="upper right",
+        bbox_to_anchor=(1.1, 1),
+        fontsize="small",
+    )
+
     plt.tight_layout()
 
     # export as as pgf and show
-    ax.legend(loc="upper right", fontsize="small")
-    plt.savefig("room_setup.pgf", pad_inches=0)
+    name = os.path.basename(args.dataset_config).split(".")[0]
+    plt.savefig(f"{name}.pgf", pad_inches=0)
     plt.show()
 
 
