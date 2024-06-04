@@ -31,7 +31,7 @@ class BVPEvaluator:
             self.writer.add_scalar("Coeffs/" + key, val.item(), step)
 
     def log_impedance(self, coeffs, ref_gt, step):
-        zr, zi = self.bvp.impedance_model(coeffs, ref_gt["f"], False)
+        zr, zi = self.bvp.impedance_model(coeffs, ref_gt["f"], True)
         zr_star, zi_star = ref_gt["real_impedance"] / (_rho0 * _c0), ref_gt[
             "imag_impedance"
         ] / (_rho0 * _c0)

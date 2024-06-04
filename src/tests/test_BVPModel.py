@@ -62,7 +62,7 @@ config = OmegaConf.create(
                     "y": [-0.5, 0.5],
                     "z": [-0.5, 0.5],
                     "f": [250],
-                }
+                },
             },
             "domain": {
                 "batch_size": 10,
@@ -129,6 +129,7 @@ data_loader, dom_loader, bnd_loader, _, _, transforms = get_loaders(config)
 data_iterator = iter(data_loader)
 dom_iterator = iter(dom_loader)
 bnd_iterator = iter(bnd_loader)
+
 
 def test_fwd_pass_psi_net():
     for model in models:
@@ -376,7 +377,7 @@ def test_losses():
             assert all(l > 0 for l in losses.values())
 
 
-def test_grad_coeffs():
+def test_compute_coeffs():
     for model in models:
         for impedance_model in impedance_models:
             config.impedance_model.type = impedance_model
@@ -387,11 +388,9 @@ def test_grad_coeffs():
                 config=config,
             )
             params, coeffs = bvp.get_parameters(), bvp.coeffs
-            coeffs = bvp.grad_coeffs(params, coeffs, next(bnd_iterator))
+            updates = bvp.compute_coeffs(params, coeffs, next(bnd_iterator))
 
-            assert len(coeffs) == len(
-                bvp.coeffs
-            )  # Number of impedance coefficients
+            assert len(updates) == len(bvp.coeffs)  # Number of impedance coefficients
             assert all(c.dtype == jnp.float32 for c in coeffs.values())
 
 

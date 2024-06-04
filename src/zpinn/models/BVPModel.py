@@ -9,7 +9,7 @@ from jax.tree_util import tree_leaves, tree_map, tree_reduce
 
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
-from zpinn.impedance_models import RMK_plus_1, constant_impedance, miki
+from zpinn.impedance_models import RMK_plus_1, constant_impedance, R_plus_2
 from zpinn.utils import flatten_pytree, cat_batches
 
 criteria = {
@@ -55,7 +55,7 @@ class BVPModel(eqx.Module):
         self.weights = (
             dict(config.weighting.initial_weights) if weights is None else weights
         )
-        # remove boundary loss weights if not using boundary loss
+        # HACK: remove boundary loss weights if not using boundary loss
         if not self.use_boundary_loss:
             self.weights.pop("bc_re")
             self.weights.pop("bc_im")
@@ -103,16 +103,14 @@ class BVPModel(eqx.Module):
             z_model = constant_impedance
         elif config.impedance_model.type == "RMK+1":
             z_model = RMK_plus_1
-        elif config.impedance_model.type == "miki":
-            z_model = lambda coeffs, f, normalized: miki(
-                coeffs["flow_resistivity"], f, 0.05, normalized
-            )
+        elif config.impedance_model.type == "R+2":
+            z_model = R_plus_2
 
         else:
             raise NotImplementedError(
-                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1', 'miki']"
+                "Impedance model not implemented. Choose from ['single_freq', 'RMK+1', 'R+2']"
             )
-
+            
         return z_model
 
     def unpack_coords(self, coords):
@@ -264,7 +262,7 @@ class BVPModel(eqx.Module):
         zr_pred, zi_pred = vmap(self.z_net, in_axes=(None, *[0] * 4))(
             params, *(x, y, z, f)
         )
-        zr_mdl, zi_mdl = self.impedance_model(coeffs, f * self.fc + self.f0, False)
+        zr_mdl, zi_mdl = self.impedance_model(coeffs, f * self.fc + self.f0, self.is_normalized)
 
         # if is_normalized, model will fit normalized impedance (zeta = z / rho0 * c0)
         if self.is_normalized:
@@ -274,11 +272,11 @@ class BVPModel(eqx.Module):
         return self.criterion(zr_pred, zr_mdl), self.criterion(zi_pred, zi_mdl)
 
     @eqx.filter_jit
-    def compute_weights(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
+    def compute_weights(self, params, coeffs, dat_batch, dom_batch, bnd_batch, **kwargs):
         """Computes the lambda weights for each loss."""
 
         # Compute the gradient of each loss w.r.t. the parameters
-        grads = jax.jacrev(self.losses, argnums=0)(
+        grads = jax.jacrev(self.losses, **kwargs)(
             params, coeffs, dat_batch, dom_batch, bnd_batch
         )
 
@@ -297,23 +295,27 @@ class BVPModel(eqx.Module):
         return w
 
     @eqx.filter_jit
-    def update_weights(self, old_w, new_w, **kwargs):
+    def update_weights(self, old_w, new_w):
         """Updates `weights` using running average with momentum."""
         running_average = (
             lambda old_w, new_w: old_w * self.momentum + (1 - self.momentum) * new_w
         )
         weights = tree_map(running_average, old_w, new_w)
+
         weights = lax.stop_gradient(weights)
 
         return weights
 
     @eqx.filter_jit
-    def grad_coeffs(self, params, coeffs, batch):
+    def compute_coeffs(self, params, coeffs, batch):
         """Computes the gradient of the loss w.r.t. the coefficients."""
-        grads = jax.jacrev(self.z_loss, argnums=1)(params, coeffs, batch)
+        grad_re, grad_im = jax.jacrev(self.z_loss, argnums=1)(params, coeffs, batch)
+                
         # add real and imag parts to form one gradient
-        grads = tree_map(lambda x, y: x + y, grads[0], grads[1])
-        return grads
+        updates = tree_map(lambda x, y: x + y, grad_re, grad_im)
+        
+        return updates
+    
 
     @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
@@ -351,11 +353,12 @@ class BVPModel(eqx.Module):
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
         alpha = 1.0
+        end_value = 1e-3
 
         logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x)))
 
-        w_re = logicstic_fn((losses["data_re"] + losses["data_im"]), alpha)
-        w_im = logicstic_fn((losses["data_re"] + losses["data_im"]), alpha)
+        w_re = end_value * logicstic_fn(losses["data_re"] + losses["pde_re"], alpha)
+        w_im = end_value * logicstic_fn(losses["data_im"] + losses["pde_im"], alpha)
 
         losses["bc_re"] = w_re * losses["bc_re"]
         losses["bc_im"] = w_im * losses["bc_im"]
@@ -370,8 +373,7 @@ class BVPModel(eqx.Module):
         if self.weighting_scheme == "grad_norm":
             if self.use_boundary_loss:
                 # Apply boundary condition balancing strategy
-                # losses = self.bc_strategy(losses)
-                pass
+                losses = self.bc_strategy(losses)
 
             # Compute weighted loss
             weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
@@ -392,9 +394,9 @@ class BVPModel(eqx.Module):
 
     @eqx.filter_jit
     def update(self, params, weights, coeffs, opt_states, optimizers, batches):
-
+        """Update the model parameters."""
         # --- Update the coefficients ---
-        grads = self.grad_coeffs(params, coeffs, batches["bnd_batch"])
+        grads = self.compute_coeffs(params, coeffs, batches["bnd_batch"])
         updates, opt_states["coeffs"] = optimizers["coeffs"].update(
             grads, opt_states["coeffs"]
         )
@@ -408,6 +410,15 @@ class BVPModel(eqx.Module):
                 "M": jnp.maximum(coeffs["M"], 0.0),
                 "G": jnp.maximum(coeffs["G"], 0.0),
                 "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
+            }
+        
+        if self.impedance_model == R_plus_2:
+            coeffs = {
+                "A": jnp.maximum(coeffs["A"], 0.0),
+                "R_2": jnp.maximum(coeffs["R_2"], 0.0),
+                "B": jnp.maximum(coeffs["B"], 0.0),
+                "alpha": jnp.clip(coeffs["alpha"], -1.0, 1.0),
+                "beta": jnp.clip(coeffs["beta"], -1.0, 1.0),
             }
 
         # --- Update the parameters and return ---
@@ -468,7 +479,7 @@ class BVPModel(eqx.Module):
 
     @eqx.filter_jit
     def compute_relative_error(self, params, coords, ref):
-        """Compute relative L2 error."""
+        """Compute relative error."""
         pr_star = ref["real_pressure"]
         pi_star = ref["imag_pressure"]
         unr_star = ref["real_velocity"]
