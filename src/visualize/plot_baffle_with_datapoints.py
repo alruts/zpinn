@@ -1,4 +1,3 @@
-
 import argparse
 import sys
 
@@ -51,6 +50,7 @@ data_loader, dom_loader, bnd_loader, _, _, transforms = get_loaders(
     CONFIG, custom_transforms=transforms, restrict_to=CONFIG.batch.data.restrict_to
 )
 
+
 def main(config=CONFIG):
 
     # sample dimensions
@@ -70,24 +70,20 @@ def main(config=CONFIG):
     # draw the sample
     ax = draw_shoebox(ax, **sample_dimensions, center=sample_center)
 
-    dz = config.grid.dz
-    z_start = config.sample.dimensions.lz + config.grid.delta_height
-    z_stop = z_start + config.grid.domain_height
-
-    step = int((z_stop - z_start) / dz)
-
     # draw the sample surface
     ax = draw_rectangle(
         ax,
         1,
         1,
-        center=(config.sample.center.x, config.sample.center.y, config.sample.dimensions.lz),
+        center=(
+            config.sample.center.x,
+            config.sample.center.y,
+            config.sample.dimensions.lz,
+        ),
         color="grey",
         alpha=0.5,
         label="Impedance surface",
     )
-
-    key, subkey = jrandom.split(jrandom.PRNGKey(0))
 
     # draw the collocation points
     dom_data = next(iter(dom_loader))
@@ -106,12 +102,9 @@ def main(config=CONFIG):
     x, y, z = mes_data["x"], mes_data["y"], mes_data["z"]
     ax.scatter(x, y, z, c="k", marker="o", label="Data points")
 
-    print(x.shape)
-
     ax.set_xlabel("$x$ (m)")
     ax.set_ylabel("$y$ (m)")
     ax.set_zlabel("$z$ (m)")
-    ax.axis("equal")
     ax.grid(True)
 
     # change grid style
@@ -126,12 +119,21 @@ def main(config=CONFIG):
     # set z limit
     ax.set_zlim(0, jnp.max(z))
 
-    # set legend
-    plt.tight_layout()
+    # set aspect ratio
+    ax.set_box_aspect([1, 1, 0.2])
+
+    # custom ticks
+    ax.set_xticks([-0.5, 0, 0.5])
+    ax.set_yticks([-0.5, 0, 0.5])
+    ax.set_zticks([0, 0.05, 0.07])
 
     # export as as pgf and show
-    # ax.legend(loc="upper right", fontsize="small")
-    # plt.savefig("baffle_with_datapoints.pgf", pad_inches=0)
+    ax.legend(loc="upper right", fontsize="small")
+
+    # remove whitespace under the plot
+    plt.tight_layout()
+
+    plt.savefig("baffle_with_datapoints.pgf")
     plt.show()
 
 

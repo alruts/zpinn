@@ -65,7 +65,7 @@ def create_room_modes_dataframe(lx, ly, lz, speed_of_sound=_c0, num_modes=5):
     return df
 
 
-def draw_shoebox(ax_3d, lx, ly, lz, center=(0, 0, 0)):
+def draw_shoebox(ax_3d, lx, ly, lz, center=(0, 0, 0), label=None):
     """Draws a 3D rectangular room in a matplotlib 3D axis.
 
     Args:
@@ -107,49 +107,111 @@ def draw_shoebox(ax_3d, lx, ly, lz, center=(0, 0, 0)):
         x = [vertex[0] + x0 for vertex in face]
         y = [vertex[1] + y0 for vertex in face]
         z = [vertex[2] + z0 for vertex in face]
-        ax_3d.plot(x, y, z, color="k")
-        ax_3d.plot([x[0], x[-1]], [y[0], y[-1]], [z[0], z[-1]], color="k")
+        
+        
+        if np.all(np.array(face).flatten() == np.array(faces[0]).flatten()) and label is not None:
+            ax_3d.plot(x, y, z, color="k", label=label)
+        else:
+            ax_3d.plot(x, y, z, color="k")
+            ax_3d.plot([x[0], x[-1]], [y[0], y[-1]], [z[0], z[-1]], color="k")
 
     return ax_3d
 
 
-def mark_side_lengths(ax_3d, lx, ly, lz, center=(0, 0, 0)):
+def draw_line_with_flat_ends(
+    ax_3d, x0, y0, z0, x1, y1, z1, color="k", linestyle="-", orientation="horizontal"
+):
+    """Draws a line with flat ends in a matplotlib 3D axis.
+
+    Args:
+        ax: Matplotlib 3D axis.
+        x0: x-coordinate of the start of the line.
+        y0: y-coordinate of the start of the line.
+        z0: z-coordinate of the start of the line.
+        x1: x-coordinate of the end of the line.
+        y1: y-coordinate of the end of the line.
+        z1: z-coordinate of the end of the line.
+        color: Color of the line (default: black).
+        linestyle: Linestyle of the line (default: dashed).
+
+    Returns:
+        The modified matplotlib 3D axis.
+    """
+    d = 0.01
+
+    ax_3d.plot(
+        [x0 - d, x1 - d],
+        [y0 - d, y1 - d],
+        [z0 - d, z1 - d],
+        color=color,
+        linestyle=linestyle,
+    )
+    if orientation == "horizontal":
+        ax_3d.plot([x0 - d, x0 - d], [y0 - d, y0 - d], [z0 - 2 * d, z0], color=color)
+        ax_3d.plot([x1 - d, x1 - d], [y1 - d, y1 - d], [z1 - 2 * d, z1], color=color)
+    else:
+        ax_3d.plot([x0 - d, x0 - d], [y0 - 2 * d, y0], [z0 - d, z0 - d], color=color)
+        ax_3d.plot([x1 - d, x1 - d], [y1 - 2 * d, y1], [z1 - d, z1 - d], color=color)
+
+    return ax_3d
+
+
+def mark_side_lengths(ax_3d, lx, ly, lz, center=(0, 0, 0), d=0.15):
     x0, y0, z0 = get_center(lx, ly, lz, center)
 
-    # distance from the edges of the room
-    delta = 0.2
-    # draw dashed lines for side lengths
+    # mark the side lengths a
+    ax_3d.text(
+        -(x0 + lx / 2),
+        -(y0 - d*2),
+        0,
+        "$l_x=1$ m",
+        color="k",
+        horizontalalignment="center",
+    )
+
+    ax_3d.text(
+        x0 - d*2,
+        y0 + ly / 2,
+        0,
+        "$l_y=1$ m",
+        color="k",
+        horizontalalignment="center",
+    )
+
+    ax_3d.text(
+        x0 - d*1.4,
+        y0 - d*1.4,
+        lz / 2,
+        "$l_z=0.05$ m",
+        color="k",
+        horizontalalignment="center",
+    )
+    
+    # draw lines
     ax_3d.plot(
-        [x0, x0 + lx],
-        [y0 - delta, y0 - delta],
-        [z0 - delta, z0 - delta],
+        [-x0, -(x0 + lx)],
+        [-(y0 - d/2), -(y0 - d/2)],
+        [0, 0],
         color="k",
         linestyle="--",
     )
+    
     ax_3d.plot(
-        [x0 - delta, x0 - delta],
-        [y0, y0 + ly],
-        [z0 - delta, z0 - delta],
+        [(x0 - d/2), (x0 - d/2)],
+        [y0, (y0 + ly)],
+        [0, 0],
         color="k",
         linestyle="--",
     )
+    
     ax_3d.plot(
-        [x0 - delta, x0 - delta],
-        [y0 - delta, y0 - delta],
-        [z0, z0 + lz],
+        [(x0 - d/4), (x0 - d/4)],
+        [(y0 - d/4), (y0 - d/4)],
+        [0, lz],
         color="k",
         linestyle="--",
     )
-    # mark side lengths
-    ax_3d.text(
-        x0 + lx / 2, y0 - delta * 4, z0 - delta, f"$l_x = {lx:.2f}$ m", color="k", zorder=1
-    )
-    ax_3d.text(
-        x0 - delta, y0 + ly / 2, z0 - delta * 4, f"$l_y = {ly:.2f}$ m", color="k", zorder=1
-    )
-    ax_3d.text(
-        x0 - delta * 4, y0 - delta, z0 + lz / 2, f"$l_z = {lz:.2f}$ m", color="k", zorder=1
-    )
+    
     return ax_3d
 
 

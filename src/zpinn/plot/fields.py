@@ -12,6 +12,8 @@ def scalar_field(
     ylabel="y (m)",
     cbar_label="Pressure (Pa)",
     ax=None,
+    return_im=False,
+    **kwargs,
 ):
     """Plots a scalar field.
 
@@ -27,12 +29,17 @@ def scalar_field(
         - cbar_label (str): colorbar label.
     """
 
-    if balanced_cmap:
-        vmax = np.max(np.abs(P))
-        vmin = -vmax
-    else:
-        vmax = np.max(P)
-        vmin = np.min(P)
+    if "vmax" not in kwargs:
+        if balanced_cmap:
+            kwargs["vmax"] = np.max(np.abs(P))
+        else:
+            kwargs["vmax"] = np.max(P)
+            
+    if "vmin" not in kwargs:
+        if balanced_cmap:
+            kwargs["vmin"] = -kwargs["vmax"]
+        else:
+            kwargs["vmin"] = np.min(P)
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -42,8 +49,7 @@ def scalar_field(
         extent=[X.min(), X.max(), Y.min(), Y.max()],
         origin="lower",
         cmap=cmap,
-        vmin=vmin,
-        vmax=vmax,
+        **kwargs,
     )
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -51,7 +57,10 @@ def scalar_field(
     cbar = plt.colorbar(im)
     cbar.set_label(cbar_label)
 
-    return ax
+    if return_im:
+        return ax, im
+    else:
+        return ax
 
 
 def vector_field(
@@ -153,7 +162,7 @@ def vector_field_3d(
         Uz,
         colors="k",
         pivot="tail",
-        units = 'inches',
+        units="inches",
         scale=1.0 / Z_range,
         width=0.01,
     )
