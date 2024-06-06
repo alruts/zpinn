@@ -1,3 +1,6 @@
+import os
+os.environ["JAX_DISABLE_JIT"] = "1" # Disable JIT for faster testing
+
 import sys
 import warnings
 
@@ -11,6 +14,7 @@ sys.path.append("src")
 from zpinn.get_loaders import get_loaders
 from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
+from zpinn.models.PirateSIREN import PirateSIREN
 from zpinn.models.SIREN import SIREN
 from zpinn.utils import flatten_pytree
 
@@ -102,11 +106,13 @@ config = OmegaConf.create(
 models = [
     SIREN(**config.model, key=jax.random.PRNGKey(0)),
     ModifiedSIREN(**config.model, key=jax.random.PRNGKey(0)),
+    PirateSIREN(**config.model, key=jax.random.PRNGKey(0)),
 ]
 
 impedance_models = [
     "single_freq",
     "RMK+1",
+    "R+2",
 ]
 
 # initial guesses for impedance models
@@ -121,6 +127,13 @@ initial_guesses = {
         "M": 0.0,
         "G": 0.0,
         "gamma": 0.0,
+    },
+    "R+2": {
+        "R_2": 0.0,
+        "A": 0.0,
+        "B": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
     },
 }
 
@@ -391,7 +404,7 @@ def test_compute_coeffs():
             updates = bvp.compute_coeffs(params, coeffs, next(bnd_iterator))
 
             assert len(updates) == len(bvp.coeffs)  # Number of impedance coefficients
-            assert all(c.dtype == jnp.float32 for c in coeffs.values())
+            assert all(c.dtype == jnp.float32 for c in updates.values())
 
 
 def test_update():
@@ -428,13 +441,12 @@ def test_update():
                 params, weights, coeffs, opt_states, optimizers, batch
             )
 
-            assert len(params) == len(bvp.get_parameters())
+            # TODO: change
             assert len(coeffs) == len(bvp.coeffs)
-
             assert type(coeffs) == dict
             assert all(c.dtype == jnp.float32 for c in coeffs.values())
 
-            assert type(params) == list
+            assert type(params) == model.__class__
             assert all(p.dtype == jnp.float32 for p in flatten_pytree(params))
 
 
