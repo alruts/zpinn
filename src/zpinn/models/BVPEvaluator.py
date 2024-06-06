@@ -1,14 +1,18 @@
-import jax
-import jax.numpy as jnp
-import numpy as np
-import matplotlib.pyplot as plt
 import sys
 
-sys.path.append("src")
-from zpinn.utils import flatten_pytree, transform
-from zpinn.plot.fields import scalar_field
-from zpinn.constants import _c0, _rho0
+import jax
+import jax.numpy as jnp
+import matplotlib
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+sys.path.append("src")
+from zpinn.constants import _c0, _rho0
+from zpinn.plot.fields import scalar_field
+from zpinn.utils import flatten_pytree, transform
 
 class BVPEvaluator:
     def __init__(self, bvp, writer, config):
@@ -40,10 +44,10 @@ class BVPEvaluator:
         self.writer.add_scalar("Impedance/RealStar", zr_star.item(), step)
         self.writer.add_scalar("Impedance/ImagStar", zi_star.item(), step)
         self.writer.add_scalar(
-            "Impedance/RealError", jnp.abs(zr - zr_star).item(), step
+            "Impedance/RealL1Error", jnp.abs(zr - zr_star).item(), step
         )
         self.writer.add_scalar(
-            "Impedance/ImagError", jnp.abs(zi - zi_star).item(), step
+            "Impedance/ImagL1Error", jnp.abs(zi - zi_star).item(), step
         )
 
     def log_grads(self, params, coeffs, batch, step):
@@ -57,9 +61,7 @@ class BVPEvaluator:
         # Compute the L2 errors
         errors_grid = self.bvp.compute_relative_error(params, coords, ref)
         x, y, z, f = self.bvp.unpack_coords(coords)
-        pl_kwargs = dict(
-            cbar_label="Relative Error",
-        )
+        pl_kwargs = dict(cbar_label="Relative Error")
 
         # Log the relative errors as figures
         for key, val in errors_grid.items():
@@ -95,7 +97,7 @@ class BVPEvaluator:
             self.writer.add_figure("Predictions/" + key, plt.gcf(), step)
             plt.close()
 
-    def __call__(self, params, coeffs, weights, batch, step, ref_coords, ref_gt):
+    def __call__(self, params, coeffs, weights, batch, step, ref_coords, ref_gt, **kwargs):
         ref_coords = dict(
             x=transform(ref_coords["x"], self.bvp.x0, self.bvp.xc),
             y=transform(ref_coords["y"], self.bvp.y0, self.bvp.yc),
@@ -123,5 +125,9 @@ class BVPEvaluator:
 
         if self.config.logging.log_preds:
             self.log_preds(params, ref_coords, step)
+
+        # TODO: Implement logging of alphas            
+        # if self.config.logging.log_alphas:
+        #     self.log_alphas(params, kwargs["alphas"], step)
 
         return self.writer
