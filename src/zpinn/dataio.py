@@ -24,9 +24,10 @@ def numpy_collate(batch):
 class PressureDataset(Dataset):
     """Dataset class for 4D data."""
 
-    def __init__(self, path):
+    def __init__(self, path, snr=None, key=None):
         self.path = path
         self.data = self._load_data()
+        torch.manual_seed(key)
 
         self.grid = self.data.attrs["grid"]
         self.transforms = self.data.attrs["transforms"]
@@ -42,6 +43,10 @@ class PressureDataset(Dataset):
         self.n_y = len(self._y)
         self.n_z = len(self._z)
         self.n_f = len(self._f)
+        
+        # Add noise to the data
+        if snr is not None:
+            self._add_noise(snr)
 
     def __len__(self):
         return self.n_f * self.n_x * self.n_y * self.n_z  # Total number of voxels
@@ -92,6 +97,35 @@ class PressureDataset(Dataset):
         with open(self.path, "rb") as f:
             dataset = pickle.load(f)
         return dataset
+    
+    def _add_noise(self, snr):
+        """Adds noise to the dataset."""
+        # convert snr to linear scale
+        snr_linear = 10 ** (snr / 10)
+        
+        # get all data points
+        data = []
+        for f in self._f:
+            data.append(self.data[f]["real_pressure"])
+            data.append(self.data[f]["imag_pressure"])
+        data = np.stack(data, axis=-1)
+        
+        # calculate signal power
+        signal_power = np.mean(data**2)
+        
+        # calculate noise power
+        noise_power = signal_power / snr_linear
+        noise = np.random.normal(0, 1, data.shape) * np.sqrt(noise_power)
+        
+        print(f"Adding noise with SNR: {snr} dB")
+        print(f"Signal power: {signal_power}, Noise power: {noise_power}")
+        print(f"Percentage of noise: {noise_power / signal_power * 100}%")
+        
+        # add noise to the data
+        for i, f in enumerate(self._f):
+            self.data[f]["real_pressure"] += noise[..., 2*i]
+            self.data[f]["imag_pressure"] += noise[..., 2*i + 1]
+            
 
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
@@ -195,8 +229,8 @@ class DomainSampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(self, batch_size, limits, transforms, distributions, rng_key=0):
-        super().__init__(batch_size, rng_key=jrandom.PRNGKey(rng_key))
+    def __init__(self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)):
+        super().__init__(batch_size, rng_key=rng_key)
 
         self.limits = limits
         self.transforms = transforms
@@ -238,8 +272,8 @@ class BoundarySampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(self, batch_size, limits, transforms, distributions, rng_key=0):
-        super().__init__(batch_size, rng_key=jrandom.PRNGKey(rng_key))
+    def __init__(self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)):
+        super().__init__(batch_size, rng_key=rng_key)
 
         self.limits = limits
         self.transforms = transforms

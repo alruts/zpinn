@@ -1,10 +1,12 @@
 import sys
 
+import jax.random as jrandom
+
 sys.path.append("src")
 from zpinn.dataio import BoundarySampler, DomainSampler, PressureDataset
 
 
-def get_loaders(config, custom_transforms=None, restrict_to=None):
+def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
     dataset = PressureDataset(config.paths.dataset)
 
     if custom_transforms is not None:
@@ -15,16 +17,18 @@ def get_loaders(config, custom_transforms=None, restrict_to=None):
         dataset.restrict_to(**restrict_to)
 
     dataloader = dataset.get_dataloader(
-        batch_size=config.batch.data.batch_size, shuffle=True
+        batch_size=config.batch.data.batch_size, shuffle=True, snr=snr, rng_key=config.random.seed
     )
 
     transforms = dataset.transforms
+    dom_key, bnd_key = jrandom.split(config.random.seed)
 
     dom_sampler = DomainSampler(
         batch_size=config.batch.domain.batch_size,
         limits=config.batch.domain.limits,
         distributions=config.batch.domain.distributions,
         transforms=transforms,
+        rng_key=dom_key,
     )
 
     bnd_sampler = BoundarySampler(
@@ -32,6 +36,7 @@ def get_loaders(config, custom_transforms=None, restrict_to=None):
         limits=config.batch.boundary.limits,
         distributions=config.batch.boundary.distributions,
         transforms=transforms,
+        rng_key=bnd_key,
     )
 
     try:
