@@ -29,7 +29,6 @@ class SineLayer(eqx.Module):
     in_features: int
     out_features: int
     linear: eqx.nn.Linear
-    weight: jnp.ndarray
 
     def __init__(self, omega_0, is_first, in_features, out_features, *, key):
         # Split key
@@ -43,12 +42,11 @@ class SineLayer(eqx.Module):
 
         # Initialize linear layer
         self.linear = eqx.nn.Linear(in_features, out_features, use_bias=True, key=key)
-        self.weight = self.linear.weight
 
-        # Initialize weights
-        self.init_weights(init_key)
+        # Initialize weights and biases
+        self.init_params(init_key)
 
-    def init_weights(self, key):
+    def init_params(self, key):
         """Initialize the weights of the layer."""
         if self.is_first:
             limit = 1.0 / self.in_features
@@ -70,7 +68,6 @@ class SineLayer(eqx.Module):
 
         # Update the weights
         self.linear = eqx.tree_at(lambda layer: layer.weight, self.linear, new_weights)
-        self.weight = self.linear.weight
 
     def __call__(self, x):
         """Forward pass."""
