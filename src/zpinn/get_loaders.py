@@ -7,7 +7,7 @@ from zpinn.dataio import BoundarySampler, DomainSampler, PressureDataset
 
 
 def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
-    dataset = PressureDataset(config.paths.dataset)
+    dataset = PressureDataset(config.paths.dataset, snr=snr, rng_key=config.random.seed)
 
     if custom_transforms is not None:
         dataset.transforms = custom_transforms
@@ -17,11 +17,11 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
         dataset.restrict_to(**restrict_to)
 
     dataloader = dataset.get_dataloader(
-        batch_size=config.batch.data.batch_size, shuffle=True, snr=snr, rng_key=config.random.seed
+        batch_size=config.batch.data.batch_size, shuffle=True
     )
 
     transforms = dataset.transforms
-    dom_key, bnd_key = jrandom.split(config.random.seed)
+    dom_key, bnd_key = jrandom.split(jrandom.PRNGKey(config.random.seed))
 
     dom_sampler = DomainSampler(
         batch_size=config.batch.domain.batch_size,

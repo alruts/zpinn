@@ -24,10 +24,10 @@ def numpy_collate(batch):
 class PressureDataset(Dataset):
     """Dataset class for 4D data."""
 
-    def __init__(self, path, snr=None, key=None):
+    def __init__(self, path, snr=None, rng_key=0):
         self.path = path
         self.data = self._load_data()
-        torch.manual_seed(key)
+        torch.manual_seed(rng_key)
 
         self.grid = self.data.attrs["grid"]
         self.transforms = self.data.attrs["transforms"]
