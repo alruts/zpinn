@@ -65,7 +65,7 @@ def main(config=CONFIG):
         sample_dimensions["lz"] / 2,
     )
     # initialize 3D plot
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"},figsize=(4, 3))
 
     # draw the sample
     ax = draw_shoebox(ax, **sample_dimensions, center=sample_center)
@@ -128,7 +128,7 @@ def main(config=CONFIG):
     ax.set_zticks([0, 0.05, 0.07])
 
     # export as as pgf and show
-    ax.legend(loc="upper right", fontsize="small")
+    ax.legend(loc="best", fontsize="small")
 
     # remove whitespace under the plot
     plt.tight_layout()
