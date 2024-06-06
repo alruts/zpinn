@@ -24,7 +24,7 @@ criteria = {
 class BVPModel(eqx.Module):
     """Base class for the boundary value problem models."""
 
-    model: eqx.Module
+    architecture: eqx.Module
     criterion: Callable
     momentum: float
     impedance_model: Callable
@@ -48,13 +48,14 @@ class BVPModel(eqx.Module):
     bc: float
 
     def __init__(
-        self, model, transforms, config, params=None, weights=None, coeffs=None
+        self, model, config, transforms=None , params=None, weights=None, coeffs=None
     ):
-        self.model = model
+        self.architecture = model
         self.use_boundary_loss = config.weighting.use_boundary_loss
         self.weights = (
             dict(config.weighting.initial_weights) if weights is None else weights
         )
+        
         # HACK: remove boundary loss weights if not using boundary loss
         if not self.use_boundary_loss:
             self.weights.pop("bc_re")
@@ -63,7 +64,7 @@ class BVPModel(eqx.Module):
         self.coeffs = (
             dict(config.impedance_model.initial_guess) if coeffs is None else coeffs
         )
-        self.params = self.model.params() if params is None else params
+        self.params = self.get_parameters() if params is None else params
         self.momentum = config.weighting.momentum
         self.weighting_scheme = config.weighting.scheme
         self.impedance_model = self._init_impedance_model(config)
@@ -89,12 +90,20 @@ class BVPModel(eqx.Module):
 
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
-        x0, xc = tfs["x0"], tfs["xc"]
-        y0, yc = tfs["y0"], tfs["yc"]
-        z0, zc = tfs["z0"], tfs["zc"]
-        f0, fc = tfs["f0"], tfs["fc"]
-        a0, ac = tfs["a0"], tfs["ac"]
-        b0, bc = tfs["b0"], tfs["bc"]
+        if tfs is None:
+            x0, xc = 0.0, 1.0
+            y0, yc = 0.0, 1.0
+            z0, zc = 0.0, 1.0
+            f0, fc = 0.0, 1.0
+            a0, ac = 0.0, 1.0
+            b0, bc = 0.0, 1.0
+        else:
+            x0, xc = tfs["x0"], tfs["xc"]
+            y0, yc = tfs["y0"], tfs["yc"]
+            z0, zc = tfs["z0"], tfs["zc"]
+            f0, fc = tfs["f0"], tfs["fc"]
+            a0, ac = tfs["a0"], tfs["ac"]
+            b0, bc = tfs["b0"], tfs["bc"]
         return x0, xc, y0, yc, z0, zc, f0, fc, a0, ac, b0, bc
 
     def _init_impedance_model(self, config):
@@ -116,21 +125,16 @@ class BVPModel(eqx.Module):
     def unpack_coords(self, coords):
         """Unpack the coordinates and ground truth."""
         return coords["x"], coords["y"], coords["z"], coords["f"]
-
+    
     def apply_model(self, params, *args):
         """Trick to enable gradient with respect to weights."""
-        get_params = lambda m: m.params()
-        model = eqx.tree_at(get_params, self.model, params)
+        _, static = eqx.partition(self.architecture, eqx.is_inexact_array)
+        model = eqx.combine(params, static)
         return model(*args)
 
     def get_parameters(self):
         """Returns the parameters of the model."""
-        is_eqx_linear = lambda x: isinstance(x, eqx.nn.Linear)
-        params = [
-            x.weight
-            for x in jax.tree_util.tree_leaves(self.model, is_leaf=is_eqx_linear)
-            if is_eqx_linear(x)
-        ]
+        params, _ = eqx.partition(self.architecture, eqx.is_inexact_array)
         return params
 
     def p_pred_fn(self, params, *args):
