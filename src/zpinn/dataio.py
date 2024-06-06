@@ -43,7 +43,7 @@ class PressureDataset(Dataset):
         self.n_y = len(self._y)
         self.n_z = len(self._z)
         self.n_f = len(self._f)
-        
+
         # Add noise to the data
         if snr is not None:
             self._add_noise(snr)
@@ -97,35 +97,34 @@ class PressureDataset(Dataset):
         with open(self.path, "rb") as f:
             dataset = pickle.load(f)
         return dataset
-    
+
     def _add_noise(self, snr):
         """Adds noise to the dataset."""
         # convert snr to linear scale
         snr_linear = 10 ** (snr / 10)
-        
+
         # get all data points
         data = []
         for f in self._f:
             data.append(self.data[f]["real_pressure"])
             data.append(self.data[f]["imag_pressure"])
         data = np.stack(data, axis=-1)
-        
+
         # calculate signal power
         signal_power = np.mean(data**2)
-        
+
         # calculate noise power
         noise_power = signal_power / snr_linear
         noise = np.random.normal(0, 1, data.shape) * np.sqrt(noise_power)
-        
+
         print(f"Adding noise with SNR: {snr} dB")
         print(f"Signal power: {signal_power}, Noise power: {noise_power}")
         print(f"Percentage of noise: {noise_power / signal_power * 100}%")
-        
+
         # add noise to the data
         for i, f in enumerate(self._f):
-            self.data[f]["real_pressure"] += noise[..., 2*i]
-            self.data[f]["imag_pressure"] += noise[..., 2*i + 1]
-            
+            self.data[f]["real_pressure"] += noise[..., 2 * i]
+            self.data[f]["imag_pressure"] += noise[..., 2 * i + 1]
 
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
@@ -184,7 +183,7 @@ class PressureDataset(Dataset):
             len(x),
             len(y),
         ), f"Reference grid shape mismatch: {gt['real_pressure'].shape}, expected: {len(x), len(y)}"
-        
+
         gt["real_impedance"] = self.data[f]["real_impedance"]
         gt["imag_impedance"] = self.data[f]["imag_impedance"]
         gt["f"] = f
@@ -229,7 +228,9 @@ class DomainSampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)):
+    def __init__(
+        self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)
+    ):
         super().__init__(batch_size, rng_key=rng_key)
 
         self.limits = limits
@@ -252,8 +253,10 @@ class DomainSampler(BaseSampler):
             data[axis] = self._sample_axis(
                 subkeys.pop(0), axis_min, axis_max, self.distributions[axis]
             )
-            t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
-            data[axis] = transform(data[axis], *t.values())
+            tfs = {
+                key: val for key, val in self.transforms.items() if key.startswith(axis)
+            }
+            data[axis] = transform(data[axis], *tfs.values())
 
         return data
 
@@ -272,7 +275,9 @@ class BoundarySampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)):
+    def __init__(
+        self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)
+    ):
         super().__init__(batch_size, rng_key=rng_key)
 
         self.limits = limits
