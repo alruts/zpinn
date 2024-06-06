@@ -13,6 +13,8 @@ class SIREN(eqx.Module):
     The model consists of a series of SineLayer modules which are densely
     connected layers with a sinusoidal activation function with a specific
     initialization scheme.
+    
+    Based on the Siren class from the repository provided in [1].
 
     Args:
         - key: Random key.
@@ -99,17 +101,6 @@ class SIREN(eqx.Module):
                     key=last_key,
                 )
             )
-            
-    def params(self):
-        """Returns the parameters of the model."""
-        is_eqx_linear = lambda x: isinstance(x, eqx.nn.Linear)
-        params = [
-            x.weight
-            for x in jax.tree_util.tree_leaves(self, is_leaf=is_eqx_linear)
-            if is_eqx_linear(x)
-        ]
-        return params
-
 
     def __call__(self, *args):
         """Forward pass."""
