@@ -7,10 +7,17 @@ def setup_loaders(config):
 
 
 def setup_optimizers(config):
-    lr = optax.exponential_decay(
-        init_value=config.training.optim.params.lr,
-        transition_steps=config.training.optim.params.transition_steps,
-        decay_rate=config.training.optim.params.decay_rate,
+    # Learning rate schedule for the parameters
+    lr = optax.join_schedules(
+        schedules=[
+            optax.exponential_decay(
+                init_value=config.training.optim.params.lr,
+                transition_steps=config.training.optim.params.transition_steps,
+                decay_rate=config.training.optim.params.decay_rate,
+            ),
+            optax.linear_schedule(0, config.training.optim.params.lr, 5000),
+        ],
+        boundaries=[5000],
     )
 
     optimizer_params = optax.chain(
@@ -18,9 +25,12 @@ def setup_optimizers(config):
         optax.adam(learning_rate=lr),
     )
 
+    # schedule for the coefficients
+    lr = optax.linear_schedule(0, config.training.optim.coeffs.lr, 5000)
+    
     optimizer_coeffs = optax.chain(
         optax.clip(1.0),
-        optax.adam(learning_rate=config.training.optim.coeffs.lr),
+        optax.adam(learning_rate=lr),
     )
 
     optimizers = dict(
