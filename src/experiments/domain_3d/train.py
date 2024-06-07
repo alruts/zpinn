@@ -66,6 +66,7 @@ def train_and_evaluate(config):
 
     # bvp
     bvp = BVPModel(model, config, transforms)
+    logging.info(f"Number of parameters: {bvp.get_num_params():,d}")
     evaluator = BVPEvaluator(bvp, writer, config)
 
     # load initial model if provided
