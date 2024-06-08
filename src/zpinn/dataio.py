@@ -126,8 +126,10 @@ class PressureDataset(Dataset):
             self.data[f]["real_pressure"] += noise[..., 2 * i]
             self.data[f]["imag_pressure"] += noise[..., 2 * i + 1]
 
+
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
+        # filter the dataset
         filter_fn = lambda arr, lb, ub: arr[(arr <= ub) & (arr >= lb)]
 
         self._f = f if f is not None else self._f
@@ -140,30 +142,29 @@ class PressureDataset(Dataset):
         self.n_z = len(self._z)
         self.n_f = len(self._f)
 
-    def get_reference(self, f):
-        """
-        Args:
-            f: The frequency for which the reference grid is to be obtained.
+        ref_x, ref_y = self.data.attrs["ref_grid"]
+        _lin_x, _lin_y = ref_x[0, :], ref_y[:, 0]
 
-        Returns:
-            tuple: A tuple comprising of the following elements:
+        # find closest index of x, y in ref_x, ref_y
+        find_idx = lambda arr, val: np.argmin(np.abs(arr - val))
+        get_lohi = lambda arr, lb, ub: (find_idx(arr, lb), find_idx(arr, ub))
 
-            coords (dict): A dictionary that encapsulates the coordinates.
-                It contains the following fields:
+        x_lo, x_hi = get_lohi(_lin_x, *x) if x is not None else (0, len(_lin_x))
+        y_lo, y_hi = get_lohi(_lin_y, *y) if y is not None else (0, len(_lin_y))
 
-                `x: The x-coordinate (m).`
-                `y: The y-coordinate (m).`
-                `z: The z-coordinate (m).`
-                `f: The frequency (Hz).`
+        for f in self._f:
+            for key, val in self.data[f]["ref"].items():
+                self.data[f]["ref"][key] = self.data[f]["ref"][key][
+                    x_lo:x_hi, y_lo:y_hi
+                ]
 
-            gt (dict): A dictionary that encapsulates the ground truth values.
-                It contains the following fields:
-
-                `real_pressure: The real pressure value (Pa).`
-                `imag_pressure: The imaginary pressure value (Pa).`
-                `real_velocity: The real velocity value (m/s).`
-                `imag_velocity: The imaginary velocity value (m/s).`
-        """
+        self.data.attrs["ref_grid"] = (
+            ref_x[x_lo:x_hi, y_lo:y_hi],
+            ref_y[x_lo:x_hi, y_lo:y_hi],
+        )
+        
+    def get_reference(self, f, restrict_to=None):
+        """Returns the reference solution for a given frequency."""
         assert f in self.data, f"Frequency {f} not in dataset"
 
         x, y = self.data.attrs["ref_grid"]
@@ -193,7 +194,7 @@ class PressureDataset(Dataset):
     def get_dataloader(self, batch_size=32, shuffle=False):
         """Returns a dataloader for the dataset."""
         return DataLoader(
-            self, batch_size=batch_size, shuffle=shuffle, collate_fn=numpy_collate
+            self, batch_size=batch_size, shuffle=shuffle, collate_fn=None
         )
 
 

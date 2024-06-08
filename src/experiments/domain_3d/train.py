@@ -7,6 +7,8 @@ import jax.random as jrandom
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import jax.numpy as jnp
+from jax.tree_util import tree_map
+import torch
 
 sys.path.append("src")
 from experiments.domain_3d.utils import setup_loaders, setup_optimizers
@@ -100,11 +102,14 @@ def train_and_evaluate(config):
             bvp, weights = transition_to_boundary_loss(
                 config, model, transforms, params, coeffs, evaluator, batch
             )
-            
+
         batch = dict(
             dat_batch=next(iter(dataloader)),
             dom_batch=next(iter(dom_sampler)),
             bnd_batch=next(iter(bnd_sampler)),
+        )
+        batch = tree_map(
+            lambda x: x.numpy() if isinstance(x, torch.Tensor) else x, batch
         )
 
         if config.weighting.scheme == "grad_norm":
