@@ -44,6 +44,6 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
             f=config.batch.data.restrict_to["f"][0]
         )
     except:
-        ref_coords, ref_gt = dataset.get_reference(1000)
+        ref_coords, ref_gt = dataset.get_reference(500)
 
     return dataloader, dom_sampler, bnd_sampler, ref_coords, ref_gt, transforms
