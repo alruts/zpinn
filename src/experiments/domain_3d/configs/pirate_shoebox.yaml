@@ -1,14 +1,14 @@
 experiment:
   name: Default
-  description: Single frequency impedance inversion
+  description: deep and shallow pirate siren model with large learning rate for coeffs
 
 paths:
-  dataset: data/processed/inf_baffle.pkl
+  dataset: data/processed/shoebox.pkl
   log_dir: tensorboards/single_freq
   initial_model: ~
 
 training:
-  steps: 80_000
+  steps: 100_000
   criterion: mse
   optim:
     params:
@@ -16,23 +16,23 @@ training:
       transition_steps: 2000
       decay_rate: 0.9
     coeffs:
-      lr: 1
+      lr: 1.0
 
 architecture:
-  name: modified_siren
+  name: pirate_siren
   in_features: 4
   out_features: 2
-  hidden_features: 32
-  hidden_layers: 3
+  hidden_features: 5
+  hidden_layers: 5
   outermost_linear: true
   first_omega_0: 30.0
   hidden_omega_0: 30.0
   
 batch:
   data:
-    batch_size: 32
-    shuffle: true
-    restrict_to:
+    batch_size: 64
+    shuffle: True
+    restrict_to: ~
       # x: # min, max
       # - -0.5
       # - 0.5
@@ -46,7 +46,7 @@ batch:
       # - 250
 
   domain:
-    batch_size: 64
+    batch_size: 128
     limits:
       x:
       - -0.5
@@ -59,7 +59,7 @@ batch:
       - 0.07
       f:
       - 50
-      - 3200
+      - 500
 
     distributions:
       x: uniform
@@ -81,7 +81,7 @@ batch:
       - 0.05
       f:
       - 50
-      - 3200
+      - 500
     distributions:
       x: uniform
       y: uniform
@@ -93,7 +93,7 @@ random:
 
 weighting:
   scheme: grad_norm # or 'mle'
-  update_every: 1000
+  update_every: 2000
   momentum: 0.9
   initial_weights:
     data_re: 1.0
@@ -109,12 +109,11 @@ impedance_model:
   type: RMK+1
   normalized: true
   initial_guess:
-    K: 0.0
+    K: 1000.0
     R_1: 0.0
     M: 0.0
-    G: 0.0
+    G: 10.0
     gamma: 0.0
-
 
 logging:
   log_interval: 1000
