@@ -121,6 +121,12 @@ class BVPModel(eqx.Module):
             )
             
         return z_model
+    
+    def get_num_params(self):
+        """Returns the number of parameters in the model."""
+        params, static = eqx.partition(self.architecture, eqx.is_inexact_array)
+        num_params = sum(x.size for x in jax.tree_leaves(params))
+        return num_params
 
     def unpack_coords(self, coords):
         """Unpack the coordinates and ground truth."""
