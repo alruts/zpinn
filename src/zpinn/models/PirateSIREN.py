@@ -3,16 +3,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrandom
 
-from ..modules.sine_layer import SineLayer
-
-
-import equinox as eqx
-import jax
-import jax.numpy as jnp
-import jax.random as jrandom
-
-from ..modules.sine_layer import SineLayer
 from ..modules.pirate_block import PirateBlock
+from ..modules.sine_layer import SineLayer
 
 
 class PirateSIREN(eqx.Module):
@@ -23,30 +15,19 @@ class PirateSIREN(eqx.Module):
     The model consists of a series of PirateBlock modules with a sinusoidal activation
     function, with the addition of the u and v encoding layers. The u and v layers
     are used to modulate the output of each layer, which helps to mitigate the gradient
-    pathologies observed in MLP models.
-    
-    [1] S. Wang, B. Li, Y. Chen, and P. Perdikaris, “PirateNets: Physics-informed 
-    Deep Learning with Residual Adaptive Networks.” arXiv, Feb. 11, 2024. Accessed: 
+    pathologies observed in MLP PINNs.
+
+    [1] S. Wang, B. Li, Y. Chen, and P. Perdikaris, “PirateNets: Physics-informed
+    Deep Learning with Residual Adaptive Networks.” arXiv, Feb. 11, 2024. Accessed:
     Jun. 05, 2024. [Online]. Available: http://arxiv.org/abs/2402.00326
-    
+
     [2] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
     Available: http://arxiv.org/abs/2006.09661
-
-
-    Args:
-    - key: Random key.
-    - in_features: Number of input features.
-    - hidden_features: Number of hidden features.
-    - hidden_layers: Number of hidden layers.
-    - out_features: Number of output features.
-    - outermost_linear: Whether the last layer is linear.
-    - first_omega_0: Frequency of the first layer.
-    - hidden_omega_0: Frequency of the hidden layers.
     """
 
-    bottlenecks: list
+    pirate_blocks: list
     last_layer: eqx.nn.Linear
     u: SineLayer
     v: SineLayer
@@ -66,7 +47,7 @@ class PirateSIREN(eqx.Module):
         last_key, *keys = jax.random.split(key, hidden_layers + 5)
         keys_iter = iter(keys)
 
-        self.bottlenecks = []
+        self.pirate_blocks = []
 
         # u and v layers
         self.u = SineLayer(
@@ -84,26 +65,15 @@ class PirateSIREN(eqx.Module):
             key=next(keys_iter),
         )
 
-        # First bottleneck layer
-        self.bottlenecks.append(
-            PirateBlock(
-                omega_0=first_omega_0,
-                in_features=in_features,
-                hidden_features=hidden_features,
-                key=next(keys_iter),
-                is_first=True,
-            )
-        )
-
-        # Hidden bottleneck layers
-        for _ in range(hidden_layers - 1):
-            self.bottlenecks.append(
+        # Hidden layers
+        for _ in range(hidden_layers):
+            self.pirate_blocks.append(
                 PirateBlock(
                     omega_0=hidden_omega_0,
                     in_features=in_features,
                     hidden_features=hidden_features,
                     key=next(keys_iter),
-                    is_first=False,
+                    is_first=True,
                 )
             )
 
@@ -138,7 +108,7 @@ class PirateSIREN(eqx.Module):
         u = self.u(x)
         v = self.v(x)
 
-        for layer in self.bottlenecks:
+        for layer in self.pirate_blocks:
             x = layer(x, u, v)
 
         x = self.last_layer(x)  # Last layer

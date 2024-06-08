@@ -8,16 +8,6 @@ class SineLayer(eqx.Module):
     Additonally, it handles weight initialization according to description
     in paper [1].
 
-    Args:
-        - omega_0: Frequency of the sine function.
-        - is_first: Whether this is the first layer.
-        - in_features: Number of input features.
-        - out_features: Number of output features.
-        - key: Random key.
-
-    Returns:
-        SineLayer: Sine layer module.
-
     [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].

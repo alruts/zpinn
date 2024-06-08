@@ -9,23 +9,11 @@ from ..modules.sine_layer import SineLayer
 class SIREN(eqx.Module):
     """SIREN model.
 
-    This model is based on the SIREN architecture proposed by Sitzmann et al.
+    This model is based on the SIREN architecture proposed by [1].
     The model consists of a series of SineLayer modules which are densely
     connected layers with a sinusoidal activation function with a specific
     initialization scheme.
     
-    Based on the Siren class from the repository provided in [1].
-
-    Args:
-        - key: Random key.
-        - in_features: Number of input features.
-        - hidden_features: Number of hidden features.
-        - hidden_layers: Number of hidden layers.
-        - out_features: Number of output features.
-        - outermost_linear: Whether the last layer is linear.
-        - first_omega_0: Frequency of the first layer.
-        - hidden_omega_0: Frequency of the hidden layers.
-
     [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].

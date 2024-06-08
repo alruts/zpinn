@@ -15,18 +15,6 @@ class ModifiedSIREN(eqx.Module):
     activation function, with the addition of the u and v encoding
     layers. The u and v layers are used to modulate the output of each layer,
     which helps to mitigate the gradient pathologies observed in MLP models.
-
-    Based on the ModifiedMlp class from the repository provided in [1].
-
-    Args:
-    - key: Random key.
-    - in_features: Number of input features.
-    - hidden_features: Number of hidden features.
-    - hidden_layers: Number of hidden layers.
-    - out_features: Number of output features.
-    - outermost_linear: Whether the last layer is linear.
-    - first_omega_0: Frequency of the first layer.
-    - hidden_omega_0: Frequency of the hidden layers.
     
     [1] S. Wang, Y. Teng, and P. Perdikaris, "Understanding and mitigating
     gradient pathologies in physics-informed neural networks." arXiv, Jan.

@@ -17,12 +17,8 @@ criteria = {
     "mae": lambda x, y: jnp.mean(jnp.abs(x - y)),
 }
 
-
-# TODO: add exact imposing method,
-
-
 class BVPModel(eqx.Module):
-    """Base class for the boundary value problem models."""
+    """PINN model for the boundary value problem."""
 
     architecture: eqx.Module
     criterion: Callable

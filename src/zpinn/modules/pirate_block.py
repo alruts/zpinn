@@ -10,19 +10,10 @@ class PirateBlock(eqx.Module):
     with the idea of using sinusoidal activation functions from [2]. The block
     consists of a series of SineLayer modules with the addition of the u and v
     encoding layers. The u and v layers are used to modulate the output of each
-    layer, which helps to mitigate the gradient pathologies observed in MLP models.
+    layer, which helps to mitigate the gradient pathologies observed in MLP PINNs.
     In addition, the block also includes an adaptive skip connection via the
     parameter alpha, which is initialized to zero and learned during training.
-    
-    Based on the PIModifiedBottleneck class from repository provided in [1].
-    
-    Args:
-    - in_features: Number of input features.
-    - hidden_features: Number of hidden features.
-    - key: Random key. Default is jrandom.PRNGKey(0).
-    - omega_0: Frequency of the sine activation function. Default is 30.0.
-    - is_first: Whether the block is the first in the network. Default is False.
-
+        
     [1] S. Wang, B. Li, Y. Chen, and P. Perdikaris, “PirateNets: Physics-informed 
     Deep Learning with Residual Adaptive Networks.” arXiv, Feb. 11, 2024. Accessed: 
     Jun. 05, 2024. [Online]. Available: http://arxiv.org/abs/2402.00326
