@@ -358,14 +358,16 @@ class BVPModel(eqx.Module):
     @eqx.filter_jit
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
+        # Define the logistic function to balance the boundary condition loss
         alpha = 1.0
-        end_value = 1e-3
+        end_value = 1e-3 # !these are hyperparameters
+        logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x))) * end_value
 
-        logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x)))
+        # Compute the weights
+        w_re = logicstic_fn(losses["data_re"] + losses["pde_re"], alpha)
+        w_im = logicstic_fn(losses["data_im"] + losses["pde_im"], alpha)
 
-        w_re = end_value * logicstic_fn(losses["data_re"] + losses["pde_re"], alpha)
-        w_im = end_value * logicstic_fn(losses["data_im"] + losses["pde_im"], alpha)
-
+        # Apply the weights
         losses["bc_re"] = w_re * losses["bc_re"]
         losses["bc_im"] = w_im * losses["bc_im"]
 
