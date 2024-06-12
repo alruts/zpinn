@@ -49,7 +49,7 @@ class PressureDataset(Dataset):
             self._add_noise(snr)
 
     def __len__(self):
-        return self.n_f * self.n_x * self.n_y * self.n_z  # Total number of voxels
+        return self.n_f * self.n_x * self.n_y * self.n_z  # Total number of points
 
     def __getitem__(self, idx):
         frame_idx = idx // (self.n_x * self.n_y * self.n_z)  # Get frame index
@@ -126,43 +126,117 @@ class PressureDataset(Dataset):
             self.data[f]["real_pressure"] += noise[..., 2 * i]
             self.data[f]["imag_pressure"] += noise[..., 2 * i + 1]
 
+    def update_transforms(self):
+        """Updates the transforms based on the data."""
+        logging.info("Updating transforms")
+        logging.info(f"Old transforms: {self.transforms}")
+        
+        # concatenate all pressure values to compute min and max
+        _p_re = np.concatenate(
+            [self.data[frequency]["real_pressure"] for frequency in self._f],
+            axis=-1,
+        )
+        _p_im = np.concatenate(
+            [self.data[frequency]["imag_pressure"] for frequency in self._f],
+            axis=-1,
+        )
+
+        # compute shift values
+        a0 = np.min(_p_re)
+        b0 = np.min(_p_im)
+        x0 = np.min(self._x)
+        y0 = np.min(self._y)
+        z0 = 0
+        f0 = 0
+
+        # compute the scale values
+        ac = np.max(abs(_p_re - a0))
+        bc = np.max(abs(_p_im - b0))
+        xc = np.max(abs(self._x - x0))
+        yc = np.max(abs(self._y - y0))
+        zc = np.max(abs(self._z - z0))
+        fc = np.max(abs(np.array(self._f) - f0))
+
+        # update the transforms
+        # self.transforms["x0"] = x0
+        # self.transforms["xc"] = xc
+        # self.transforms["y0"] = y0
+        # self.transforms["yc"] = yc
+        # self.transforms["z0"] = z0
+        # self.transforms["zc"] = zc
+        # self.transforms["f0"] = f0
+        # self.transforms["fc"] = fc
+        self.transforms["a0"] = a0
+        self.transforms["ac"] = ac
+        self.transforms["b0"] = b0
+        self.transforms["bc"] = bc
+        
+        logging.info(f"New transforms: {self.transforms}")
 
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
+
+        def get_lohi(arr, lb, ub):
+            idxs = np.where((arr <= ub) & (arr >= lb))
+            return np.amin(idxs), np.amax(idxs) + 1
+
+        def filter_data(arr, bounds):
+            if bounds is not None:
+                lo, hi = get_lohi(arr, *bounds)
+                print(f"Filtering data from {lo} to {hi}")
+                return arr[lo:hi]
+            else:
+                return arr
+
+        # get the slice indices before filtering
+        slice_x = slice(*get_lohi(self._x, *x)) if x is not None else slice(None)
+        slice_y = slice(*get_lohi(self._y, *y)) if y is not None else slice(None)
+        slice_z = slice(*get_lohi(self._z, *z)) if z is not None else slice(None)
+
         # filter the dataset
-        filter_fn = lambda arr, lb, ub: arr[(arr <= ub) & (arr >= lb)]
-
         self._f = f if f is not None else self._f
-        self._x = filter_fn(self._x, *x) if x is not None else self._x
-        self._y = filter_fn(self._y, *y) if y is not None else self._y
-        self._z = filter_fn(self._z, *z) if z is not None else self._z
+        self._x = filter_data(self._x, x)
+        self._y = filter_data(self._y, y)
+        self._z = filter_data(self._z, z)
 
+        # update the number of points
         self.n_x = len(self._x)
         self.n_y = len(self._y)
         self.n_z = len(self._z)
         self.n_f = len(self._f)
 
+        # filter the pressure data
+        for f in self._f:
+            for key in ["real_pressure", "imag_pressure"]:
+                self.data[f][key] = self.data[f][key][slice_x, slice_y, slice_z]
+
+        # filter the reference
         ref_x, ref_y = self.data.attrs["ref_grid"]
         _lin_x, _lin_y = ref_x[0, :], ref_y[:, 0]
 
-        # find closest index of x, y in ref_x, ref_y
-        find_idx = lambda arr, val: np.argmin(np.abs(arr - val))
-        get_lohi = lambda arr, lb, ub: (find_idx(arr, lb), find_idx(arr, ub))
-
-        x_lo, x_hi = get_lohi(_lin_x, *x) if x is not None else (0, len(_lin_x))
-        y_lo, y_hi = get_lohi(_lin_y, *y) if y is not None else (0, len(_lin_y))
-
+        # filter the reference data
         for f in self._f:
             for key, val in self.data[f]["ref"].items():
                 self.data[f]["ref"][key] = self.data[f]["ref"][key][
-                    x_lo:x_hi, y_lo:y_hi
+                    slice(*get_lohi(_lin_x, *x)) if x is not None else slice(None),
+                    slice(*get_lohi(_lin_y, *y)) if y is not None else slice(None),
                 ]
 
+        # filter the reference grid
         self.data.attrs["ref_grid"] = (
-            ref_x[x_lo:x_hi, y_lo:y_hi],
-            ref_y[x_lo:x_hi, y_lo:y_hi],
+            ref_x[
+                slice(*get_lohi(_lin_y, *y)) if y is not None else slice(None),
+                slice(*get_lohi(_lin_x, *x)) if x is not None else slice(None),
+            ],
+            ref_y[
+                slice(*get_lohi(_lin_y, *y)) if y is not None else slice(None),
+                slice(*get_lohi(_lin_x, *x)) if x is not None else slice(None),
+            ],
         )
         
+        # update the transforms TODO: run exp with this setting
+        self.update_transforms()
+
     def get_reference(self, f, restrict_to=None):
         """Returns the reference solution for a given frequency."""
         assert f in self.data, f"Frequency {f} not in dataset"
@@ -193,9 +267,7 @@ class PressureDataset(Dataset):
 
     def get_dataloader(self, batch_size=32, shuffle=False):
         """Returns a dataloader for the dataset."""
-        return DataLoader(
-            self, batch_size=batch_size, shuffle=shuffle, collate_fn=None
-        )
+        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=None)
 
 
 class BaseSampler(Dataset):
