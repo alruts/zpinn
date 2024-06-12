@@ -16,8 +16,12 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
         print(f"Restricting dataset to {restrict_to}")
         dataset.restrict_to(**restrict_to)
 
+    if config.batch.data.batch_size == "full":
+        config.batch.data.batch_size = len(dataset)
+        config.batch.data.shuffle = False
+        
     dataloader = dataset.get_dataloader(
-        batch_size=config.batch.data.batch_size, shuffle=True
+        batch_size=config.batch.data.batch_size, shuffle=config.batch.data.shuffle
     )
 
     transforms = dataset.transforms
