@@ -6,7 +6,7 @@ def setup_loaders(config):
     return get_loaders(config, restrict_to=config.batch.data.restrict_to)
 
 
-def setup_optimizers(config):
+def setup_optimizers(config, start_step=0):
     # Learning rate schedule for the parameters
     lr = optax.join_schedules(
         schedules=[
@@ -19,6 +19,7 @@ def setup_optimizers(config):
         ],
         boundaries=[5000],
     )
+    lr = lr(start_step)
 
     optimizer_params = optax.chain(
         optax.clip(1.0),
@@ -27,7 +28,7 @@ def setup_optimizers(config):
 
     # schedule for the coefficients
     lr = optax.linear_schedule(0, config.training.optim.coeffs.lr, 5000)
-    
+        
     optimizer_coeffs = optax.chain(
         optax.clip(1.0),
         optax.adam(learning_rate=lr),
