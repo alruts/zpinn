@@ -4,6 +4,7 @@ import sys
 import jax.numpy as jnp
 import jax.random as jrandom
 import matplotlib.pyplot as plt
+from jax.tree_util import tree_map
 from omegaconf import OmegaConf
 
 sys.path.append("src")
@@ -89,6 +90,9 @@ def main(config=CONFIG):
     dom_data = next(iter(dom_loader))
     bnd_data = next(iter(bnd_loader))
     mes_data, _ = next(iter(data_loader))
+    
+    mes_data = tree_map(lambda x: x.numpy(), mes_data)
+    
 
     # plot the collocation points
     x, y, z = dom_data["x"], dom_data["y"], dom_data["z"]
