@@ -14,6 +14,7 @@ from zpinn.constants import _c0, _rho0
 from zpinn.plot.fields import scalar_field
 from zpinn.utils import flatten_pytree, transform
 
+
 class BVPEvaluator:
     def __init__(self, bvp, writer, config):
         self.config = config
@@ -74,7 +75,6 @@ class BVPEvaluator:
         #     ax = scalar_field(val, x, y, ax=ax, **pl_kwargs)
         #     self.writer.add_figure("RelErrors/" + key, plt.gcf(), step)
         #     plt.close()
-            
 
     def log_preds(self, params, grid, step):
         x, y, z, f = self.bvp.unpack_coords(grid)
@@ -98,7 +98,17 @@ class BVPEvaluator:
             self.writer.add_figure("Predictions/" + key, plt.gcf(), step)
             plt.close()
 
-    def __call__(self, params, coeffs, weights, batch, step, ref_coords, ref_gt, **kwargs):
+    def log_alphas(self, params, step):
+        alphas = []
+        for block in params.pirate_blocks:
+            alphas.append(block.alpha)
+
+        for idx, alpha in enumerate(alphas):
+            self.writer.add_scalar(f"Alphas/{idx}", alpha.item(), step)
+
+    def __call__(
+        self, params, coeffs, weights, batch, step, ref_coords, ref_gt, **kwargs
+    ):
         ref_coords = dict(
             x=transform(ref_coords["x"], self.bvp.x0, self.bvp.xc),
             y=transform(ref_coords["y"], self.bvp.y0, self.bvp.yc),
@@ -123,12 +133,12 @@ class BVPEvaluator:
 
         if self.config.logging.log_errors:
             self.log_errors(params, ref_coords, ref_gt, step)
-            
+
         if self.config.logging.log_preds:
             self.log_preds(params, ref_coords, step)
 
-        # TODO: Implement logging of alphas            
-        # if self.config.logging.log_alphas:
-        #     self.log_alphas(params, kwargs["alphas"], step)
+        # TODO: Implement logging of alphas
+        if self.config.architecture.name == "pirate_siren":
+            self.log_alphas(params, step)
 
         return self.writer
