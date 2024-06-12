@@ -38,26 +38,36 @@ class SineLayer(eqx.Module):
 
     def init_params(self, key):
         """Initialize the weights of the layer."""
+        weight_key, bias_key = jrandom.split(key)
         if self.is_first:
             limit = 1.0 / self.in_features
             new_weights = jrandom.uniform(
-                key,
+                weight_key,
                 (self.out_features, self.in_features),
                 minval=-limit,
                 maxval=limit,
             )
+            # new_biases = jrandom.uniform(
+            #     bias_key, (self.out_features,), minval=-limit, maxval=limit
+            # )
+            new_biases = jnp.zeros((self.out_features,))
 
         else:
             limit = jnp.sqrt(6.0 / self.in_features) / self.omega_0
             new_weights = jrandom.uniform(
-                key,
+                weight_key,
                 (self.out_features, self.in_features),
                 minval=-limit,
                 maxval=limit,
             )
+            # new_biases = jrandom.uniform(
+            #     bias_key, (self.out_features,), minval=-limit, maxval=limit
+            # )
+            new_biases = jnp.zeros((self.out_features,))
 
-        # Update the weights
+        # Update the weights and biases
         self.linear = eqx.tree_at(lambda layer: layer.weight, self.linear, new_weights)
+        self.linear = eqx.tree_at(lambda layer: layer.bias, self.linear, new_biases)
 
     def __call__(self, x):
         """Forward pass."""
