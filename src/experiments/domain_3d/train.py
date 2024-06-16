@@ -4,6 +4,8 @@ import sys
 import equinox as eqx
 import hydra
 import jax.random as jrandom
+from jax import vmap
+import jax
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import jax.numpy as jnp
@@ -17,6 +19,7 @@ from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
 from zpinn.models.PirateSIREN import PirateSIREN
 from zpinn.models.SIREN import SIREN
+from zpinn.utils import cat_batches
 
 
 def transition_to_boundary_loss(
@@ -66,15 +69,46 @@ def train_and_evaluate(config):
         setup_loaders(config)
     )
 
-    # bvp
-    bvp = BVPModel(model, config, transforms)
-    logging.info(f"Number of parameters: {bvp.get_num_params():,d}")
-    evaluator = BVPEvaluator(bvp, writer, config)
+    # if config.architecture.use_pi_init: TODO: add to config
+    if config.architecture.name == "pirate_siren":
+        # get coords and gt
+        coords, gt = next(iter(dataloader))
+        x, y, z, f = (
+            coords["x"].numpy(),
+            coords["y"].numpy(),
+            coords["z"].numpy(),
+            coords["f"].numpy(),
+        )
+
+        # build feature matrices
+        feat_mat = vmap(model, in_axes=(0, 0, 0, 0))(x, y, z, f)
+        p_re, p_im = gt["real_pressure"].numpy(), gt["imag_pressure"].numpy()
+
+        a = feat_mat
+        b = jnp.stack([p_re, p_re, p_im, p_im])
+
+        # # !solve least squares problem
+        sol, res, rank, s = jnp.linalg.lstsq(
+            jnp.hstack([feat_mat] * 2), jnp.stack([p_re, p_im]).T, rcond=None
+        )
+
+        logging.info(f"PI init residual: {res}")
+
+        model = PirateSIREN(
+            **config.architecture,
+            key=subkey,
+            pi_init_weights=sol,
+        )
 
     # load initial model if provided
     if config.paths.initial_model is not None:
         bvp = eqx.tree_deserialise_leaves(config.paths.initial_model, bvp)
         logging.info(f"Loaded model from {config.paths.initial_model}")
+
+    # bvp
+    bvp = BVPModel(model, config, transforms)
+    evaluator = BVPEvaluator(bvp, writer, config)
+    logging.info(f"Number of parameters: {bvp.get_num_params():,d}")
 
     # initial params, weights and coeffs
     params = bvp.params
@@ -108,9 +142,20 @@ def train_and_evaluate(config):
             dom_batch=next(iter(dom_sampler)),
             bnd_batch=next(iter(bnd_sampler)),
         )
+        
+        # convert torch tensors to numpy
         batch = tree_map(
             lambda x: x.numpy() if isinstance(x, torch.Tensor) else x, batch
         )
+
+        # concat coords to send to pde loss
+        pde_batches = [batch["dom_batch"], batch["bnd_batch"]]        
+        if config.batch.use_extra_layer:
+            extra_batch = batch["bnd_batch"]
+            extra_batch["z"] = extra_batch["z"] + config.batch.offset
+            pde_batches.append(extra_batch)
+            
+        batch["dom_batch"] = cat_batches(pde_batches)
 
         if config.weighting.scheme == "grad_norm":
             params, coeffs, opt_states = bvp.update(
