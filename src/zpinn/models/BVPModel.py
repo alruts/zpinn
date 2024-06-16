@@ -10,12 +10,13 @@ from jax.tree_util import tree_leaves, tree_map, tree_reduce
 sys.path.append("src")
 from zpinn.constants import _c0, _rho0
 from zpinn.impedance_models import RMK_plus_1, constant_impedance, R_plus_2
-from zpinn.utils import flatten_pytree, cat_batches
+from zpinn.utils import flatten_pytree
 
 criteria = {
-    "mse": lambda x, y: jnp.mean((x - y) ** 2),
-    "mae": lambda x, y: jnp.mean(jnp.abs(x - y)),
+    "mse": lambda x, y, axis=None: jnp.mean((x - y) ** 2, axis=axis),
+    "mae": lambda x, y, axis=None: jnp.mean(jnp.abs(x - y), axis=axis),
 }
+
 
 class BVPModel(eqx.Module):
     """PINN model for the boundary value problem."""
@@ -42,16 +43,20 @@ class BVPModel(eqx.Module):
     ac: float
     b0: float
     bc: float
+    use_causal: bool
+    num_chunks: int
+    tol: float
+    M: jnp.ndarray
 
     def __init__(
-        self, model, config, transforms=None , params=None, weights=None, coeffs=None
+        self, model, config, transforms=None, params=None, weights=None, coeffs=None
     ):
         self.architecture = model
         self.use_boundary_loss = config.weighting.use_boundary_loss
         self.weights = (
             dict(config.weighting.initial_weights) if weights is None else weights
         )
-        
+
         # HACK: remove boundary loss weights if not using boundary loss
         if not self.use_boundary_loss:
             self.weights.pop("bc_re")
@@ -84,6 +89,13 @@ class BVPModel(eqx.Module):
         # Initialize the loss criterion
         self.criterion = criteria[config.training.criterion]
 
+        # causal training
+        self.use_causal = config.weighting.use_causal
+        if self.use_causal:
+            self.num_chunks = config.weighting.num_chunks
+            self.tol = config.weighting.tol
+            self.M = jnp.triu(jnp.ones((self.num_chunks, self.num_chunks)), k=1).T
+
     def _init_transforms(self, tfs):
         """Unpack the transformation parameters."""
         if tfs is None:
@@ -105,19 +117,19 @@ class BVPModel(eqx.Module):
     def _init_impedance_model(self, config):
         # Initialize the coefficients based on the impedance model
         if config.impedance_model.type == "single_freq":
-            z_model = constant_impedance
+            imped_model = constant_impedance
         elif config.impedance_model.type == "RMK+1":
-            z_model = RMK_plus_1
+            imped_model = RMK_plus_1
         elif config.impedance_model.type == "R+2":
-            z_model = R_plus_2
+            imped_model = R_plus_2
 
         else:
             raise NotImplementedError(
                 "Impedance model not implemented. Choose from ['single_freq', 'RMK+1', 'R+2']"
             )
-            
-        return z_model
-    
+
+        return imped_model
+
     def get_num_params(self):
         """Returns the number of parameters in the model."""
         params, static = eqx.partition(self.architecture, eqx.is_inexact_array)
@@ -127,7 +139,7 @@ class BVPModel(eqx.Module):
     def unpack_coords(self, coords):
         """Unpack the coordinates and ground truth."""
         return coords["x"], coords["y"], coords["z"], coords["f"]
-    
+
     def apply_model(self, params, *args):
         """Trick to enable gradient with respect to weights."""
         _, static = eqx.partition(self.architecture, eqx.is_inexact_array)
@@ -247,9 +259,9 @@ class BVPModel(eqx.Module):
     def p_loss(self, params, batch):
         """Data (pressure) loss."""
         coords, gt = batch  # unpack the data batch
-        x, y, z, f = self.unpack_coords(coords)
+        coords = self.unpack_coords(coords)
         pr_pred, pi_pred = vmap(self.psi_net, in_axes=(None, *[0] * 4))(
-            params, *(x, y, z, f)
+            params, *(coords)
         )
         pr_target, pi_target = gt["real_pressure"], gt["imag_pressure"]
         return self.criterion(pr_pred, pr_target), self.criterion(pi_pred, pi_target)
@@ -257,9 +269,28 @@ class BVPModel(eqx.Module):
     def r_loss(self, params, batch):
         """PDE residual loss."""
         coords = batch
-        x, y, z, f = self.unpack_coords(coords)
-        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
+        coords = self.unpack_coords(coords)
+        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(coords))
         return self.criterion(rr, 0.0), self.criterion(ri, 0.0)
+
+    def res_and_w(self, params, batch):
+        """Weighting scheme for z-axis."""
+        # unpack the data
+        x, y, z, f = self.unpack_coords(batch)
+        z = -jnp.sort(-z)  # sort in descending order
+
+        # compute the residual
+        rr, ri = vmap(self.r_net, in_axes=(None, *[0] * 4))(params, *(x, y, z, f))
+
+        # split into chunks
+        rr, ri = rr.reshape(self.num_chunks, -1), ri.reshape(self.num_chunks, -1)
+        lr, li = self.criterion(rr, 0.0, axis=1), self.criterion(ri, 0.0, axis=1)
+
+        # compute the weights (no need to backpropagate through this part)
+        wr = lax.stop_gradient(jnp.exp(-self.tol * (self.M @ lr)))
+        wi = lax.stop_gradient(jnp.exp(-self.tol * (self.M @ li)))
+
+        return lr, li, wr, wi
 
     def z_loss(self, params, coeffs, batch):
         """Boundary loss."""
@@ -268,7 +299,9 @@ class BVPModel(eqx.Module):
         zr_pred, zi_pred = vmap(self.z_net, in_axes=(None, *[0] * 4))(
             params, *(x, y, z, f)
         )
-        zr_mdl, zi_mdl = self.impedance_model(coeffs, f * self.fc + self.f0, self.is_normalized)
+        zr_mdl, zi_mdl = self.impedance_model(
+            coeffs, f * self.fc + self.f0, self.is_normalized
+        )
 
         # if is_normalized, model will fit normalized impedance (zeta = z / rho0 * c0)
         if self.is_normalized:
@@ -278,7 +311,9 @@ class BVPModel(eqx.Module):
         return self.criterion(zr_pred, zr_mdl), self.criterion(zi_pred, zi_mdl)
 
     @eqx.filter_jit
-    def compute_weights(self, params, coeffs, dat_batch, dom_batch, bnd_batch, **kwargs):
+    def compute_weights(
+        self, params, coeffs, dat_batch, dom_batch, bnd_batch, **kwargs
+    ):
         """Computes the lambda weights for each loss."""
 
         # Compute the gradient of each loss w.r.t. the parameters
@@ -316,26 +351,28 @@ class BVPModel(eqx.Module):
     def compute_coeffs(self, params, coeffs, batch):
         """Computes the gradient of the loss w.r.t. the coefficients."""
         grad_re, grad_im = jax.jacrev(self.z_loss, argnums=1)(params, coeffs, batch)
-                
+
         # add real and imag parts to form one gradient
         updates = tree_map(lambda x, y: x + y, grad_re, grad_im)
-        
+
         return updates
-    
 
     @eqx.filter_jit
     def losses(self, params, coeffs, dat_batch, dom_batch, bnd_batch):
         """Returns the losses of the model."""
-
         # data loss
         data_re, data_im = self.p_loss(params, dat_batch)
 
-        # concatenate the batches
-        pde_re, pde_im = self.r_loss(params, cat_batches([dom_batch, bnd_batch]))
-        # pde_re, pde_im = self.r_loss(params, bnd_batch)
+        # pde loss
+        if self.use_causal:
+            lr, li, wr, wi = self.res_and_w(params, dom_batch)
+            pde_re, pde_im = jnp.mean((wr + wi) / 2 * lr), jnp.mean((wr + wi) / 2 * li)
 
+        else:
+            pde_re, pde_im = self.r_loss(params, dom_batch)
+
+        # boundary loss
         if self.use_boundary_loss:
-            # boundary loss
             bc_re, bc_im = self.z_loss(params, coeffs, bnd_batch)
 
             return {
@@ -358,18 +395,17 @@ class BVPModel(eqx.Module):
     @eqx.filter_jit
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
-        # Define the logistic function to balance the boundary condition loss
-        alpha = 1.0
-        end_value = 1e-3 # !these are hyperparameters
-        logicstic_fn = lambda x, a: 2 * (jnp.exp(-a * x) / (1 + jnp.exp(-a * x))) * end_value
+        # hyperparameters
+        tol = 10000
+        lambda_max = 1e-2
 
         # Compute the weights
-        w_re = logicstic_fn(losses["data_re"] + losses["pde_re"], alpha)
-        w_im = logicstic_fn(losses["data_im"] + losses["pde_im"], alpha)
+        w_re = jnp.exp(-tol * losses["pde_re"]) * lambda_max
+        w_im = jnp.exp(-tol * losses["pde_im"]) * lambda_max
 
         # Apply the weights
-        losses["bc_re"] = w_re * losses["bc_re"]
-        losses["bc_im"] = w_im * losses["bc_im"]
+        losses["bc_re"] = (w_re + w_im) / 2 * losses["bc_re"]
+        losses["bc_im"] = (w_re + w_im) / 2 * losses["bc_im"]
 
         return losses
 
@@ -419,7 +455,7 @@ class BVPModel(eqx.Module):
                 "G": jnp.maximum(coeffs["G"], 0.0),
                 "gamma": jnp.clip(coeffs["gamma"], -1.0, 1.0),
             }
-        
+
         if self.impedance_model == R_plus_2:
             coeffs = {
                 "A": jnp.maximum(coeffs["A"], 0.0),
@@ -468,10 +504,10 @@ class BVPModel(eqx.Module):
         z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
         zr_star, zi_star = z_cmplx.real, z_cmplx.imag
 
-        x, y, z, f = self.unpack_coords(coords)
-        pr_pred, pi_pred = self.p_pred_fn(params, *(x, y, z, f))
-        unr_pred, uni_pred = self.un_pred_fn(params, *(x, y, z, f))
-        zr_pred, zi_pred = self.z_pred_fn(params, *(x, y, z, f))
+        coords = self.unpack_coords(coords)
+        pr_pred, pi_pred = self.p_pred_fn(params, *(coords))
+        unr_pred, uni_pred = self.un_pred_fn(params, *(coords))
+        zr_pred, zi_pred = self.z_pred_fn(params, *(coords))
 
         error_fn = lambda x, y: jnp.linalg.norm(x - y) / (jnp.linalg.norm(y) + 1e-12)
 
@@ -497,10 +533,10 @@ class BVPModel(eqx.Module):
         z_cmplx /= ref["real_velocity"] + 1j * ref["imag_velocity"]
         zr_star, zi_star = z_cmplx.real, z_cmplx.imag
 
-        x, y, z, f = self.unpack_coords(coords)
-        pr_pred, pi_pred = self.p_pred_fn(params, *(x, y, z, f))
-        unr_pred, uni_pred = self.un_pred_fn(params, *(x, y, z, f))
-        zr_pred, zi_pred = self.z_pred_fn(params, *(x, y, z, f))
+        coords = self.unpack_coords(coords)
+        pr_pred, pi_pred = self.p_pred_fn(params, *(coords))
+        unr_pred, uni_pred = self.un_pred_fn(params, *(coords))
+        zr_pred, zi_pred = self.z_pred_fn(params, *(coords))
 
         error_fn = lambda x, y: (x - y) / (jnp.abs(x) + jnp.abs(y))
 
