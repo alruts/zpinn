@@ -91,8 +91,10 @@ class SIREN(eqx.Module):
             )
 
     def __call__(self, *args):
-        """Forward pass."""
-        x = jnp.array([*args])  # Stack the input variables
+        """Forward pass."""   
+        num_ins = self.layers[0].in_features
+             
+        x = jnp.array([*args[:num_ins]])  # Stack the input variables
         for layer in self.layers:
             x = layer(x)
         return x

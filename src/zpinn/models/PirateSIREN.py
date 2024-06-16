@@ -2,9 +2,22 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
+from typing import Union
 
 from ..modules.pirate_block import PirateBlock
 from ..modules.sine_layer import SineLayer
+
+
+class PIKernel(eqx.Module):
+    """Physics-Informed initialization kernel."""
+
+    kernel: jnp.ndarray
+
+    def __init__(self, pi_init_weights):
+        self.kernel = pi_init_weights
+
+    def __call__(self, x):
+        return jnp.dot(x, self.kernel)
 
 
 class PirateSIREN(eqx.Module):
@@ -28,7 +41,7 @@ class PirateSIREN(eqx.Module):
     """
 
     pirate_blocks: list
-    last_layer: eqx.nn.Linear
+    last_layer: Union[eqx.nn.Linear, jnp.ndarray]
     u: SineLayer
     v: SineLayer
 
@@ -42,6 +55,7 @@ class PirateSIREN(eqx.Module):
         first_omega_0=30.0,
         hidden_omega_0=30.0,
         key=jrandom.PRNGKey(0),
+        pi_init_weights=None,
         **kwargs,
     ):
         last_key, *keys = jax.random.split(key, hidden_layers + 5)
@@ -79,19 +93,23 @@ class PirateSIREN(eqx.Module):
 
         # Last layer
         if outermost_linear:
-            init_key, last_key = jax.random.split(last_key)
-            self.last_layer = eqx.nn.Linear(
-                in_features, out_features, use_bias=True, key=last_key
-            )
+            if pi_init_weights is not None:
+                self.last_layer = PIKernel(pi_init_weights)
 
-            # Initialize the weights
-            lim = jnp.sqrt(6.0 / in_features) / hidden_omega_0
-            new_weights = jrandom.uniform(
-                init_key, (out_features, in_features), minval=-lim, maxval=lim
-            )
-            self.last_layer = eqx.tree_at(
-                lambda layer: layer.weight, self.last_layer, new_weights
-            )
+            else:
+                init_key, last_key = jax.random.split(last_key)
+                self.last_layer = eqx.nn.Linear(
+                    in_features, out_features, use_bias=True, key=last_key
+                )
+
+                # Initialize the weights
+                lim = jnp.sqrt(6.0 / in_features) / hidden_omega_0
+                new_weights = jrandom.uniform(
+                    init_key, (out_features, in_features), minval=-lim, maxval=lim
+                )
+                self.last_layer = eqx.tree_at(
+                    lambda layer: layer.weight, self.last_layer, new_weights
+                )
 
         else:
             self.last_layer = SineLayer(
@@ -104,7 +122,9 @@ class PirateSIREN(eqx.Module):
 
     def __call__(self, *args):
         """Forward pass."""
-        x = jnp.array([*args])  # Stack the input variables
+        num_ins = self.pirate_blocks[0].layers[0].in_features
+
+        x = jnp.array([*args[:num_ins]])  # Stack the input variables
         u = self.u(x)
         v = self.v(x)
 
