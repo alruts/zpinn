@@ -123,6 +123,17 @@ def main(config=CONFIG):
             linestyle="--",
         )
         
+    
+    
+    # draw source
+    ax = draw_source(
+        ax,
+        config.source.center.x,
+        config.source.center.y,
+        config.source.center.z,
+        color="r",
+    )
+        
 
     ax.set_xlabel("$x$ (m)")
     ax.set_ylabel("$y$ (m)")
