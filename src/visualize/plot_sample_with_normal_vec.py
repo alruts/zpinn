@@ -9,19 +9,26 @@ from mpl_toolkits.mplot3d import proj3d
 from omegaconf import OmegaConf
 
 sys.path.append("src")
-from zpinn.plot.rooms import draw_rectangle, draw_shoebox, mark_side_lengths
+from zpinn.plot.rooms import (
+    draw_rectangle,
+    draw_shoebox,
+    mark_side_lengths,
+    draw_source,
+)
+
 
 class Arrow3D(FancyArrowPatch):
     def __init__(self, xs, ys, zs, *args, **kwargs):
-        super().__init__((0,0), (0,0), *args, **kwargs)
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
         self._verts3d = xs, ys, zs
 
     def do_3d_projection(self, renderer=None):
         xs3d, ys3d, zs3d = self._verts3d
         xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
-        self.set_positions((xs[0],ys[0]),(xs[1],ys[1]))
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
 
         return np.min(zs)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -71,13 +78,21 @@ def main(config=CONFIG):
         alpha=0.5,
         label="Impedance surface",
     )
-    
-    
+
     ax = mark_side_lengths(ax, **sample_dimensions, center=sample_center)
 
     # draw the normal vector
     start = (0, 0, sample_dimensions["lz"])
-    end = (0, 0, sample_dimensions["lz"] + 0.15)
+    end = (0, 0, sample_dimensions["lz"] + 0.5)
+
+    # draw source
+    ax = draw_source(
+        ax,
+        config.source.center.x,
+        config.source.center.y,
+        config.source.center.z,
+        color="red",
+    )
 
     # draw arrow
     a = Arrow3D(
@@ -88,11 +103,12 @@ def main(config=CONFIG):
         lw=1,
         arrowstyle="-|>",
         color="black",
+        zorder=10,
     )
     ax.add_artist(a)
-    
+
     # mark the arrow head
-    ax.text(end[0], end[1], end[2], "$\mathbf{n}$", color="black", fontsize=12)
+    ax.text(end[0]+0.1, end[1]+0.1, end[2]-0.14, "$\mathbf{n}$", color="black", fontsize=12)
 
     ax.set_xlabel("$x$ (m)")
     ax.set_ylabel("$y$ (m)")
@@ -105,14 +121,18 @@ def main(config=CONFIG):
     ax.zaxis._axinfo["grid"].update(color="lightgrey", linestyle="-", linewidth=0.5)
     ax.zaxis._axinfo["juggled"] = (1, 2, 2)
 
+
+    # legend
+    ax.legend(loc='center left', bbox_to_anchor=(0.6, 0.6), frameon=False)
+
     # modify the view angle
-    ax.view_init(elev=25, azim=145)
+    ax.view_init(elev=19, azim=135)
 
     # set z limit
-    ax.set_zlim(0, sample_dimensions["lz"])
+    ax.set_zlim(0, config.source.center.z + 0.2)
 
     # set aspect ratio
-    ax.set_box_aspect([1, 1, 0.1])
+    # ax.set_box_aspect([1, 1, 0.1])
 
     # custom ticks
     ax.set_xticks([-0.5, 0, 0.5])
@@ -124,7 +144,6 @@ def main(config=CONFIG):
 
     # remove whitespace under the plot
     plt.tight_layout()
-    
 
     plt.savefig("sample_sketch.pgf")
     plt.show()
