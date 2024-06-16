@@ -1,8 +1,0 @@
-# @package _global_
-hydra:
-  sweeper:
-    params:
-      +batch.domain.limits.x: [-0.6, 0.6]
-      +batch.domain.limits.y: [-0.6, 0.6]
-      +batch.boundary.limits.x: [-0.6, 0.6]
-      +batch.boundary.limits.y: [-0.6, 0.6]

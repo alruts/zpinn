@@ -1,7 +1,0 @@
-# @package _global_
-hydra:
-  sweeper:
-    params:
-      +batch.data.restrict_to.f: [100]
-      +batch.domain.limits.f: [100, 100]
-      +batch.boundary.limits.f: [100, 100]
