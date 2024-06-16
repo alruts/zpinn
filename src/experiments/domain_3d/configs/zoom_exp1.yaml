@@ -3,7 +3,7 @@ experiment:
   description: Single frequency impedance inversion
 
 paths:
-  dataset: data/processed/shoebox.pkl
+  dataset: data/processed/inf_baffle.pkl
   log_dir: tensorboards/single_freq
   initial_model: ~
 
@@ -16,29 +16,29 @@ training:
       transition_steps: 2000
       decay_rate: 0.9
     coeffs:
-      lr: 1e-3
+      lr: 1e-2
 
 architecture:
-  name: pirate_siren
+  name: modified_siren
   in_features: 4
   out_features: 2
-  hidden_features: 3
-  hidden_layers: 2
+  hidden_features: 8
+  hidden_layers: 3
   outermost_linear: true
   first_omega_0: 30.0
   hidden_omega_0: 30.0
   
 batch:
   data:
-    batch_size: 9
+    batch_size: 32
     shuffle: true
     restrict_to:
       x: # min, max
-      - -0.1
-      - 0.1
+      - -0.5
+      - 0.5
       y: # min, max
-      - -0.1
-      - 0.1
+      - -0.5
+      - 0.5
       # z: # min, max
       # - 0.05
       # - 0.2
@@ -46,14 +46,14 @@ batch:
       - 250
 
   domain:
-    batch_size: 18
+    batch_size: 128
     limits:
       x:
-      - 0.0
-      - 0.0
+      - -0.5
+      - 0.5
       y:
-      - 0.0
-      - 0.0
+      - -0.5
+      - 0.5
       z:
       - 0.05
       - 0.07
@@ -68,14 +68,14 @@ batch:
       f: uniform
 
   boundary:
-    batch_size: 1
+    batch_size: 64
     limits:
       x:
-      - 0.0
-      - 0.0
+      - -0.5
+      - 0.5
       y:
-      - 0.0
-      - 0.0
+      - -0.5
+      - 0.5
       z:
       - 0.05
       - 0.05
@@ -120,4 +120,4 @@ logging:
   log_impedance: true
   log_grads: true
   log_errors: true
-  log_preds: false
+  log_preds: true

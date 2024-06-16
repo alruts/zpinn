@@ -1,0 +1,10 @@
+# @package _global_
+hydra:
+  sweeper:
+    params:
+      +batch.data.restrict_to.x: [-0.3, 0.3]
+      +batch.data.restrict_to.y: [-0.3, 0.3]
+      +batch.domain.limits.x: [-0.3, 0.3]
+      +batch.domain.limits.y: [-0.3, 0.3]
+      +batch.boundary.limits.x: [-0.3, 0.3]
+      +batch.boundary.limits.y: [-0.3, 0.3]
