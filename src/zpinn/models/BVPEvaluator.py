@@ -94,7 +94,9 @@ class BVPEvaluator:
 
         for key, val in preds.items():
             _, ax = plt.subplots(figsize=(5, 5))
-            ax = scalar_field(val, x, y, ax=ax)
+            ax = scalar_field(
+                val, x, y, ax=ax, cbar_label=key, cmap="jet", balanced_cmap=False
+            )
             self.writer.add_figure("Predictions/" + key, plt.gcf(), step)
             plt.close()
 
@@ -105,6 +107,15 @@ class BVPEvaluator:
 
         for idx, alpha in enumerate(alphas):
             self.writer.add_scalar(f"Alphas/{idx}", alpha.item(), step)
+
+    def log_casual_weights(self, params, batch, step):
+        lr, li, wr, wi = self.bvp.res_and_w(params, batch)
+        _, ax = plt.subplots(figsize=(5, 5))
+        ax.plot(wr, label="Real")
+        ax.plot(wi, label="Imag")
+        ax.legend()
+        self.writer.add_figure("CasualWeights", plt.gcf(), step)
+        plt.close()
 
     def __call__(
         self, params, coeffs, weights, batch, step, ref_coords, ref_gt, **kwargs
@@ -137,8 +148,10 @@ class BVPEvaluator:
         if self.config.logging.log_preds:
             self.log_preds(params, ref_coords, step)
 
-        # TODO: Implement logging of alphas
         if self.config.architecture.name == "pirate_siren":
             self.log_alphas(params, step)
+
+        if self.config.weighting.use_causal:
+            self.log_casual_weights(params, batch["dom_batch"], step)
 
         return self.writer
