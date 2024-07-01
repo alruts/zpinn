@@ -3,34 +3,14 @@ import optax
 
 
 def setup_loaders(config):
-    return get_loaders(config)
-
-
-from zpinn.get_loaders import get_loaders
-import optax
-
-
-def setup_loaders(config):
     return get_loaders(config, restrict_to=config.batch.data.restrict_to)
 
 
 def setup_optimizers(config):
-
-    # Learning rate schedule for the parameters
-    lr = optax.join_schedules(
-        schedules=[
-            optax.linear_schedule(
-                0,
-                config.training.optim.params.lr,
-                config.training.optim.params.warm_up_steps,
-            ),
-            optax.exponential_decay(
-                init_value=config.training.optim.params.lr,
-                transition_steps=config.training.optim.params.transition_steps,
-                decay_rate=config.training.optim.params.decay_rate,
-            ),
-        ],
-        boundaries=[config.training.optim.params.warm_up_steps],
+    lr = optax.exponential_decay(
+        init_value=config.training.optim.params.lr,
+        transition_steps=config.training.optim.params.transition_steps,
+        decay_rate=config.training.optim.params.decay_rate,
     )
 
     optimizer_params = optax.chain(
@@ -38,12 +18,9 @@ def setup_optimizers(config):
         optax.adam(learning_rate=lr),
     )
 
-    # schedule for the coefficients
-    lr = optax.linear_schedule(0, config.training.optim.coeffs.lr, 5000)
-
     optimizer_coeffs = optax.chain(
         optax.clip(1.0),
-        optax.adam(learning_rate=lr),
+        optax.adam(learning_rate=config.training.optim.coeffs.lr),
     )
 
     optimizers = dict(

@@ -4,44 +4,16 @@ import sys
 import equinox as eqx
 import hydra
 import jax.random as jrandom
-from jax import vmap
-import jax
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import jax.numpy as jnp
-from jax.tree_util import tree_map
-import torch
 
 sys.path.append("src")
 from experiments.domain_3d.utils import setup_loaders, setup_optimizers
 from zpinn.models.BVPEvaluator import BVPEvaluator
 from zpinn.models.BVPModel import BVPModel
 from zpinn.models.ModifiedSIREN import ModifiedSIREN
-from zpinn.models.PirateSIREN import PirateSIREN
 from zpinn.models.SIREN import SIREN
-from zpinn.utils import cat_batches
-
-
-def transition_to_boundary_loss(
-    config, model, transforms, params, coeffs, evaluator, batch
-):
-    assert (
-        config.weighting.scheme == "grad_norm"
-    ), "Only grad_norm supported for transition to boundary loss."
-
-    # switch to boundary loss
-    config.weighting.use_boundary_loss = True
-    bvp = BVPModel(model, transforms, config, params, None, coeffs)  # reset bvp
-
-    # update evaluator
-    evaluator.bvp = bvp
-
-    # recalculate weights
-    weights = bvp.weights
-    new_w = bvp.compute_weights(params, coeffs, **batch, argnums=0)
-    weights = bvp.update_weights(weights, new_w)
-
-    return bvp, weights
 
 
 def train_and_evaluate(config):
@@ -59,8 +31,6 @@ def train_and_evaluate(config):
         model = SIREN(**config.architecture, key=subkey)
     elif config.architecture.name == "modified_siren":
         model = ModifiedSIREN(**config.architecture, key=subkey)
-    elif config.architecture.name == "pirate_siren":
-        model = PirateSIREN(**config.architecture, key=subkey)
     else:
         raise ValueError(f"Invalid architecture: {config.architecture}")
 
@@ -69,49 +39,17 @@ def train_and_evaluate(config):
         setup_loaders(config)
     )
 
-    # if config.architecture.use_pi_init: TODO: add to config
-    if config.architecture.name == "pirate_siren":
-        # get coords and gt
-        coords, gt = next(iter(dataloader))
-        x, y, z, f = (
-            coords["x"].numpy(),
-            coords["y"].numpy(),
-            coords["z"].numpy(),
-            coords["f"].numpy(),
-        )
-
-        # build feature matrices
-        feat_mat = vmap(model, in_axes=(0, 0, 0, 0))(x, y, z, f)
-        p_re, p_im = gt["real_pressure"].numpy(), gt["imag_pressure"].numpy()
-
-        a = feat_mat
-        b = jnp.stack([p_re, p_re, p_im, p_im])
-
-        # # !solve least squares problem
-        sol, res, rank, s = jnp.linalg.lstsq(
-            jnp.hstack([feat_mat] * 2), jnp.stack([p_re, p_im]).T, rcond=None
-        )
-
-        logging.info(f"PI init residual: {res}")
-
-        model = PirateSIREN(
-            **config.architecture,
-            key=subkey,
-            pi_init_weights=sol,
-        )
+    # bvp
+    bvp = BVPModel(model, transforms, config)
+    evaluator = BVPEvaluator(bvp, writer, config)
 
     # load initial model if provided
     if config.paths.initial_model is not None:
         bvp = eqx.tree_deserialise_leaves(config.paths.initial_model, bvp)
         logging.info(f"Loaded model from {config.paths.initial_model}")
 
-    # bvp
-    bvp = BVPModel(model, config, transforms)
-    evaluator = BVPEvaluator(bvp, writer, config)
-    logging.info(f"Number of parameters: {bvp.get_num_params():,d}")
-
     # initial params, weights and coeffs
-    params = bvp.params
+    params = bvp.get_parameters()
     weights = bvp.weights
     coeffs = bvp.coeffs
 
@@ -119,44 +57,41 @@ def train_and_evaluate(config):
     optimizers = setup_optimizers(config)
 
     opt_states = dict(
-        params=optimizers["params"].init(bvp.get_parameters()),
-        coeffs=optimizers["coeffs"].init(bvp.coeffs),
+        params=optimizers["params"].init(params),
+        coeffs=optimizers["coeffs"].init(coeffs),
     )
     if config.weighting.scheme == "mle":
         opt_states["weights"] = optimizers["weights"].init(bvp.weights)
 
-    # ------------------- Training loop -------------------
+    # ------------------- Training -------------------
     logging.info("Starting training, wait for JIT compilation...")
     for step in tqdm(range(config.training.steps)):
-
-        if (
-            step == config.weighting.transition_step
-            and config.weighting.transition_step is not None
-        ):
-            bvp, weights = transition_to_boundary_loss(
-                config, model, transforms, params, coeffs, evaluator, batch
-            )
-
+        # load batch
         batch = dict(
             dat_batch=next(iter(dataloader)),
             dom_batch=next(iter(dom_sampler)),
             bnd_batch=next(iter(bnd_sampler)),
         )
         
-        # convert torch tensors to numpy
-        batch = tree_map(
-            lambda x: x.numpy() if isinstance(x, torch.Tensor) else x, batch
-        )
-
-        # concat coords to send to pde loss
-        pde_batches = [batch["dom_batch"], batch["bnd_batch"]]        
-        if config.batch.use_extra_layer:
-            extra_batch = batch["bnd_batch"]
-            extra_batch["z"] = extra_batch["z"] + config.batch.offset
-            pde_batches.append(extra_batch)
+        # transition to boundary loss
+        if (
+            step == config.weighting.transition_step
+            and config.weighting.transition_step is not None
+        ):
+            assert (
+                config.weighting.scheme == "grad_norm"
+            ), "Only grad_norm supported for transition to boundary loss."
             
-        batch["dom_batch"] = cat_batches(pde_batches)
+            config.weighting.use_boundary_loss = True  # switch to boundary loss
+            bvp = BVPModel(model, transforms, config, params, None, coeffs)  # reset bvp
+            evaluator.bvp = bvp  # reset evaluator
+            # reset weights
+            weights = bvp.weights  
+            new_w = bvp.compute_weights(params, coeffs, **batch, argnums=0)
+            weights = bvp.update_weights(weights, new_w)
 
+
+        # step
         if config.weighting.scheme == "grad_norm":
             params, coeffs, opt_states = bvp.update(
                 params, weights, coeffs, opt_states, optimizers, batch
@@ -165,25 +100,30 @@ def train_and_evaluate(config):
             if step % config.weighting.update_every == 0:
                 new_w = bvp.compute_weights(params, coeffs, **batch, argnums=0)
                 weights = bvp.update_weights(weights, new_w)
+                
+                # new_w = bvp.compute_weights(params, coeffs, **batch, argnums=1)
+                # c_weights = bvp.update_weights(weights, new_w)
 
         if config.weighting.scheme == "mle":
             params, weights, coeffs, opt_states = bvp.update(
                 params, weights, coeffs, opt_states, optimizers, batch
             )
-            # TODO: add this to config
+            
+            # weight clipping
             weights["bc_im"] = jnp.maximum(weights["bc_im"], 1.0)
             weights["bc_re"] = jnp.maximum(weights["bc_re"], 1.0)
 
         # logging
         if step % config.logging.log_interval == 0:
             evaluator(params, coeffs, weights, batch, step, ref_coords, ref_gt)
+
     # -----------------------------------------------
 
     # Save model in hydra output directory
     model_path = (
         hydra.core.hydra_config.HydraConfig.get().runtime.output_dir + "/model.eqx"
     )
-    bvp = BVPModel(model, config, transforms, params, None, coeffs)
+    bvp = BVPModel(model, transforms, config, params, None, coeffs)
     eqx.tree_serialise_leaves(model_path, bvp)
     logging.info(f"Model saved to {model_path}")
 

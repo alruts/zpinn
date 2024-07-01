@@ -8,6 +8,16 @@ class SineLayer(eqx.Module):
     Additonally, it handles weight initialization according to description
     in paper [1].
 
+    Args:
+        - omega_0: Frequency of the sine function.
+        - is_first: Whether this is the first layer.
+        - in_features: Number of input features.
+        - out_features: Number of output features.
+        - key: Random key.
+
+    Returns:
+        SineLayer: Sine layer module.
+
     [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
@@ -33,41 +43,31 @@ class SineLayer(eqx.Module):
         # Initialize linear layer
         self.linear = eqx.nn.Linear(in_features, out_features, use_bias=True, key=key)
 
-        # Initialize weights and biases
-        self.init_params(init_key)
+        # Initialize weights
+        self.init_weights(init_key)
 
-    def init_params(self, key):
+    def init_weights(self, key):
         """Initialize the weights of the layer."""
-        weight_key, bias_key = jrandom.split(key)
         if self.is_first:
             limit = 1.0 / self.in_features
             new_weights = jrandom.uniform(
-                weight_key,
+                key,
                 (self.out_features, self.in_features),
                 minval=-limit,
                 maxval=limit,
             )
-            # new_biases = jrandom.uniform(
-            #     bias_key, (self.out_features,), minval=-limit, maxval=limit
-            # )
-            new_biases = jnp.zeros((self.out_features,))
 
         else:
             limit = jnp.sqrt(6.0 / self.in_features) / self.omega_0
             new_weights = jrandom.uniform(
-                weight_key,
+                key,
                 (self.out_features, self.in_features),
                 minval=-limit,
                 maxval=limit,
             )
-            # new_biases = jrandom.uniform(
-            #     bias_key, (self.out_features,), minval=-limit, maxval=limit
-            # )
-            new_biases = jnp.zeros((self.out_features,))
 
-        # Update the weights and biases
+        # Update the weights
         self.linear = eqx.tree_at(lambda layer: layer.weight, self.linear, new_weights)
-        self.linear = eqx.tree_at(lambda layer: layer.bias, self.linear, new_biases)
 
     def __call__(self, x):
         """Forward pass."""

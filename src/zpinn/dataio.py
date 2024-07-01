@@ -24,10 +24,9 @@ def numpy_collate(batch):
 class PressureDataset(Dataset):
     """Dataset class for 4D data."""
 
-    def __init__(self, path, snr=None, rng_key=0):
+    def __init__(self, path, snr=None, non_dim=True):
         self.path = path
         self.data = self._load_data()
-        torch.manual_seed(rng_key)
 
         self.grid = self.data.attrs["grid"]
         self.transforms = self.data.attrs["transforms"]
@@ -44,12 +43,29 @@ class PressureDataset(Dataset):
         self.n_z = len(self._z)
         self.n_f = len(self._f)
 
-        # Add noise to the data
-        if snr is not None:
-            self._add_noise(snr)
+        self.snr = snr
+        if self.snr is not None:
+            self._add_noise(snr=self.snr)
+        if non_dim:
+            self._non_dim()
+        else:
+            self.transforms = {
+                "x0": 0.0,
+                "y0": 0.0,
+                "z0": 0.0,
+                "f0": 0.0,
+                "a0": 0.0,
+                "b0": 0.0,
+                "xc": 1.0,
+                "yc": 1.0,
+                "zc": 1.0,
+                "fc": 1.0,
+                "ac": 1.0,
+                "bc": 1.0,
+            }
 
     def __len__(self):
-        return self.n_f * self.n_x * self.n_y * self.n_z  # Total number of points
+        return self.n_f * self.n_x * self.n_y * self.n_z  # Total number of voxels
 
     def __getitem__(self, idx):
         frame_idx = idx // (self.n_x * self.n_y * self.n_z)  # Get frame index
@@ -98,6 +114,39 @@ class PressureDataset(Dataset):
             dataset = pickle.load(f)
         return dataset
 
+    def _non_dim(self):
+        """Non-dimensionalizes the data."""
+        get_scale = lambda x: (np.max(x) - np.min(x))
+        get_shift = lambda x: np.min(x)
+        get_max = lambda x: np.max(x)
+
+        # Non-dimensionalize the coordinates
+        self.transforms["x0"] = get_shift(self._x)
+        self.transforms["y0"] = get_shift(self._y)
+        self.transforms["z0"] = 0
+
+        self.transforms["xc"] = get_scale(self._x)
+        self.transforms["yc"] = get_scale(self._y)
+        self.transforms["zc"] = get_max(self._z)
+
+        # Non-dimensionalize the frequencies
+        self.transforms["f0"] = 0
+        self.transforms["fc"] = get_max(self._f)
+
+        # Non-dimensionalize the pressure data
+        self.transforms["a0"] = get_shift(self.data[self._f[0]]["real_pressure"])
+        self.transforms["ac"] = get_scale(self.data[self._f[0]]["real_pressure"])
+        self.transforms["b0"] = get_shift(self.data[self._f[0]]["imag_pressure"])
+        self.transforms["bc"] = get_scale(self.data[self._f[0]]["imag_pressure"])
+
+        logging.info("Non-dimensionalizing the data")
+        logging.info(f"x0: {self.transforms['x0']}, xc: {self.transforms['xc']}")
+        logging.info(f"y0: {self.transforms['y0']}, yc: {self.transforms['yc']}")
+        logging.info(f"z0: {self.transforms['z0']}, zc: {self.transforms['zc']}")
+        logging.info(f"f0: {self.transforms['f0']}, fc: {self.transforms['fc']}")
+        logging.info(f"a0: {self.transforms['a0']}, ac: {self.transforms['ac']}")
+        logging.info(f"b0: {self.transforms['b0']}, bc: {self.transforms['bc']}")
+
     def _add_noise(self, snr):
         """Adds noise to the dataset."""
         # convert snr to linear scale
@@ -125,53 +174,6 @@ class PressureDataset(Dataset):
         for i, f in enumerate(self._f):
             self.data[f]["real_pressure"] += noise[..., 2 * i]
             self.data[f]["imag_pressure"] += noise[..., 2 * i + 1]
-
-    def update_transforms(self):
-        """Updates the transforms based on the data."""
-        logging.info("Updating transforms")
-        logging.info(f"Old transforms: {self.transforms}")
-        
-        # concatenate all pressure values to compute min and max
-        _p_re = np.concatenate(
-            [self.data[frequency]["real_pressure"] for frequency in self._f],
-            axis=-1,
-        )
-        _p_im = np.concatenate(
-            [self.data[frequency]["imag_pressure"] for frequency in self._f],
-            axis=-1,
-        )
-
-        # compute shift values
-        a0 = np.min(_p_re)
-        b0 = np.min(_p_im)
-        x0 = np.min(self._x)
-        y0 = np.min(self._y)
-        z0 = 0
-        f0 = 0
-
-        # compute the scale values
-        ac = np.max(abs(_p_re - a0))
-        bc = np.max(abs(_p_im - b0))
-        xc = np.max(abs(self._x - x0))
-        yc = np.max(abs(self._y - y0))
-        zc = np.max(abs(self._z - z0))
-        fc = np.max(abs(np.array(self._f) - f0))
-
-        # update the transforms
-        # self.transforms["x0"] = x0
-        # self.transforms["xc"] = xc
-        # self.transforms["y0"] = y0
-        # self.transforms["yc"] = yc
-        # self.transforms["z0"] = z0
-        # self.transforms["zc"] = zc
-        # self.transforms["f0"] = f0
-        # self.transforms["fc"] = fc
-        self.transforms["a0"] = a0
-        self.transforms["ac"] = ac
-        self.transforms["b0"] = b0
-        self.transforms["bc"] = bc
-        
-        logging.info(f"New transforms: {self.transforms}")
 
     def restrict_to(self, x=None, y=None, z=None, f=None):
         """Restricts the dataset to a specific x, y, z, f."""
@@ -233,12 +235,10 @@ class PressureDataset(Dataset):
                 slice(*get_lohi(_lin_x, *x)) if x is not None else slice(None),
             ],
         )
-        
-        # update the transforms TODO: run exp with this setting
-        self.update_transforms()
+        self._non_dim()
 
-    def get_reference(self, f, restrict_to=None):
-        """Returns the reference solution for a given frequency."""
+    def get_reference(self, f):
+        """Returns the reference data for a specific frequency."""
         assert f in self.data, f"Frequency {f} not in dataset"
 
         x, y = self.data.attrs["ref_grid"]
@@ -267,7 +267,9 @@ class PressureDataset(Dataset):
 
     def get_dataloader(self, batch_size=32, shuffle=False):
         """Returns a dataloader for the dataset."""
-        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=None)
+        return DataLoader(
+            self, batch_size=batch_size, shuffle=shuffle, collate_fn=numpy_collate
+        )
 
 
 class BaseSampler(Dataset):
@@ -301,10 +303,8 @@ class DomainSampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(
-        self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)
-    ):
-        super().__init__(batch_size, rng_key=rng_key)
+    def __init__(self, batch_size, limits, transforms, distributions, rng_key=0):
+        super().__init__(batch_size, rng_key=jrandom.PRNGKey(rng_key))
 
         self.limits = limits
         self.transforms = transforms
@@ -326,10 +326,8 @@ class DomainSampler(BaseSampler):
             data[axis] = self._sample_axis(
                 subkeys.pop(0), axis_min, axis_max, self.distributions[axis]
             )
-            tfs = {
-                key: val for key, val in self.transforms.items() if key.startswith(axis)
-            }
-            data[axis] = transform(data[axis], *tfs.values())
+            t = {k: v for k, v in self.transforms.items() if k.startswith(axis)}
+            data[axis] = transform(data[axis], *t.values())
 
         return data
 
@@ -348,10 +346,8 @@ class BoundarySampler(BaseSampler):
             Dictionary containing the distributions for the points 'uniform' or 'grid'.
     """
 
-    def __init__(
-        self, batch_size, limits, transforms, distributions, rng_key=jrandom.PRNGKey(0)
-    ):
-        super().__init__(batch_size, rng_key=rng_key)
+    def __init__(self, batch_size, limits, transforms, distributions, rng_key=0):
+        super().__init__(batch_size, rng_key=jrandom.PRNGKey(rng_key))
 
         self.limits = limits
         self.transforms = transforms

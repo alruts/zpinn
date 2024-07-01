@@ -1,13 +1,11 @@
 import sys
 
-import jax.random as jrandom
-
 sys.path.append("src")
 from zpinn.dataio import BoundarySampler, DomainSampler, PressureDataset
 
 
-def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
-    dataset = PressureDataset(config.paths.dataset, snr=snr, rng_key=config.random.seed)
+def get_loaders(config, custom_transforms=None, restrict_to=None):
+    dataset = PressureDataset(config.paths.dataset, snr=config.snr, non_dim=config.use_non_dim)
 
     if custom_transforms is not None:
         dataset.transforms = custom_transforms
@@ -16,23 +14,17 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
         print(f"Restricting dataset to {restrict_to}")
         dataset.restrict_to(**restrict_to)
 
-    if config.batch.data.batch_size == "full":
-        config.batch.data.batch_size = len(dataset)
-        config.batch.data.shuffle = False
-        
     dataloader = dataset.get_dataloader(
-        batch_size=config.batch.data.batch_size, shuffle=config.batch.data.shuffle
+        batch_size=config.batch.data.batch_size, shuffle=True
     )
 
     transforms = dataset.transforms
-    dom_key, bnd_key = jrandom.split(jrandom.PRNGKey(config.random.seed))
 
     dom_sampler = DomainSampler(
         batch_size=config.batch.domain.batch_size,
         limits=config.batch.domain.limits,
         distributions=config.batch.domain.distributions,
         transforms=transforms,
-        rng_key=dom_key,
     )
 
     bnd_sampler = BoundarySampler(
@@ -40,7 +32,6 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
         limits=config.batch.boundary.limits,
         distributions=config.batch.boundary.distributions,
         transforms=transforms,
-        rng_key=bnd_key,
     )
 
     try:
@@ -48,6 +39,6 @@ def get_loaders(config, custom_transforms=None, restrict_to=None, snr=None):
             f=config.batch.data.restrict_to["f"][0]
         )
     except:
-        ref_coords, ref_gt = dataset.get_reference(500)
+        ref_coords, ref_gt = dataset.get_reference(1000)
 
     return dataloader, dom_sampler, bnd_sampler, ref_coords, ref_gt, transforms

@@ -151,7 +151,7 @@ class BVPEvaluator:
         if self.config.architecture.name == "pirate_siren":
             self.log_alphas(params, step)
 
-        if self.config.weighting.use_causal:
+        if self.config.weighting.use_locality:
             self.log_casual_weights(params, batch["dom_batch"], step)
 
         return self.writer
