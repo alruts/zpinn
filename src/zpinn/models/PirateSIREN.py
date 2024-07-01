@@ -44,6 +44,10 @@ class PirateSIREN(eqx.Module):
     last_layer: Union[eqx.nn.Linear, jnp.ndarray]
     u: SineLayer
     v: SineLayer
+    in_features: int
+    hidden_features: int
+    hidden_layers: int
+    out_features: int
 
     def __init__(
         self,
@@ -58,6 +62,12 @@ class PirateSIREN(eqx.Module):
         pi_init_weights=None,
         **kwargs,
     ):
+        # Initialize the model
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.hidden_layers = hidden_layers
+        self.out_features = out_features
+
         last_key, *keys = jax.random.split(key, hidden_layers + 5)
         keys_iter = iter(keys)
 
@@ -122,9 +132,7 @@ class PirateSIREN(eqx.Module):
 
     def __call__(self, *args):
         """Forward pass."""
-        num_ins = self.pirate_blocks[0].layers[0].in_features
-
-        x = jnp.array([*args[:num_ins]])  # Stack the input variables
+        x = jnp.array([*args])  # Stack the input variables
         u = self.u(x)
         v = self.v(x)
 

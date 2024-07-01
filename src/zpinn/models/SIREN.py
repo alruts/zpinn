@@ -9,11 +9,21 @@ from ..modules.sine_layer import SineLayer
 class SIREN(eqx.Module):
     """SIREN model.
 
-    This model is based on the SIREN architecture proposed by [1].
+    This model is based on the SIREN architecture proposed by Sitzmann et al.
     The model consists of a series of SineLayer modules which are densely
     connected layers with a sinusoidal activation function with a specific
     initialization scheme.
-    
+
+    Args:
+        - key: Random key.
+        - in_features: Number of input features.
+        - hidden_features: Number of hidden features.
+        - hidden_layers: Number of hidden layers.
+        - out_features: Number of output features.
+        - outermost_linear: Whether the last layer is linear.
+        - first_omega_0: Frequency of the first layer.
+        - hidden_omega_0: Frequency of the hidden layers.
+
     [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
@@ -21,6 +31,10 @@ class SIREN(eqx.Module):
     """
 
     layers: list
+    in_features: int
+    hidden_features: int
+    hidden_layers: int
+    out_features: int
 
     def __init__(
         self,
@@ -34,6 +48,12 @@ class SIREN(eqx.Module):
         key=jrandom.PRNGKey(0),
         **kwargs,
     ):
+        # Initialize the model
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.hidden_layers = hidden_layers
+        self.out_features = out_features
+
         keys = jax.random.split(key, hidden_layers + 2)
         first_key, *hidden_keys, last_key = keys
 
@@ -91,10 +111,8 @@ class SIREN(eqx.Module):
             )
 
     def __call__(self, *args):
-        """Forward pass."""   
-        num_ins = self.layers[0].in_features
-             
-        x = jnp.array([*args[:num_ins]])  # Stack the input variables
+        """Forward pass."""
+        x = jnp.array([*args])  # Stack the input variables
         for layer in self.layers:
             x = layer(x)
         return x

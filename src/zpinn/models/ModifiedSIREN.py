@@ -9,28 +9,41 @@ from ..modules.sine_layer import SineLayer
 class ModifiedSIREN(eqx.Module):
     """Modified MLP with sinusoidal activation functions.
 
-    This model is based on the modified MLP proposed by [1], combined
-    with the idea of using sinusoidal activation functions, as proposed by [2]. 
-    The model consists of a series of SineLayer modules with a sinusoidal 
-    activation function, with the addition of the u and v encoding
-    layers. The u and v layers are used to modulate the output of each layer,
-    which helps to mitigate the gradient pathologies observed in MLP models.
-    
-    [1] S. Wang, Y. Teng, and P. Perdikaris, "Understanding and mitigating
-    gradient pathologies in physics-informed neural networks." arXiv, Jan.
-    13, 2020. Accessed: Apr. 04, 2024. [Online].
-    Available: http://arxiv.org/abs/2001.04536
+    This model is based on the SIREN architecture proposed by Sitzmann et al
+    and the modifications proposed by Wang et al. The model consists of a
+    series of SineLayer modules with a sinusoidal activation function, with
+    the addition of the u and v encoding layers. The u and v layers are used
+    to modulate the output of each layer, which helps to mitigate the gradient
+    pathologies observed in MLP models.
 
-    [2] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
+    Args:
+    - key: Random key.
+    - in_features: Number of input features.
+    - hidden_features: Number of hidden features.
+    - hidden_layers: Number of hidden layers.
+    - out_features: Number of output features.
+    - outermost_linear: Whether the last layer is linear.
+    - first_omega_0: Frequency of the first layer.
+    - hidden_omega_0: Frequency of the hidden layers.
+
+    [1] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G.
     Wetzstein, "Implicit Neural Representations with Periodic Activation
     Functions." arXiv, Jun. 17, 2020. Accessed: Mar. 08, 2024. [Online].
     Available: http://arxiv.org/abs/2006.09661
 
+    [2] S. Wang, Y. Teng, and P. Perdikaris, "Understanding and mitigating
+    gradient pathologies in physics-informed neural networks." arXiv, Jan.
+    13, 2020. Accessed: Apr. 04, 2024. [Online].
+    Available: http://arxiv.org/abs/2001.04536
     """
 
     layers: list
     u: SineLayer
     v: SineLayer
+    in_features: int
+    hidden_features: int
+    hidden_layers: int
+    out_features: int
 
     def __init__(
         self,
@@ -44,6 +57,12 @@ class ModifiedSIREN(eqx.Module):
         key=jrandom.PRNGKey(0),
         **kwargs,
     ):
+        # Initialize the model
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.hidden_layers = hidden_layers
+        self.out_features = out_features
+        
         last_key, *keys = jax.random.split(key, hidden_layers + 4)
         keys_iter = iter(keys)
 
@@ -116,9 +135,8 @@ class ModifiedSIREN(eqx.Module):
 
     def __call__(self, *args):
         """Forward pass."""
-        num_ins = self.layers[0].in_features
         
-        x = jnp.array([*args[:num_ins]])  # Stack the input variables
+        x = jnp.array([*args])  # Stack the input variables
         u = self.u(x)
         v = self.v(x)
 
