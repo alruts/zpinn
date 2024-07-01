@@ -1,6 +1,6 @@
 paths:
   mph: "C:\\Users\\STNj\\dtu\\thesis\\simulations\\.mph\\inf_baffle\\inf_baffle.mph"
-  data: "C:\\Users\\STNj\\dtu\\thesis\\zpinn\\data"
+  data: "data"
 
 # --- Simulation configuration for COMSOL ---
 sample:
@@ -40,29 +40,29 @@ mesh:
 dataset:
   name: inf_baffle
   frequencies: [
-      50,
-      63,
-      80,
+      # 50,
+      # 63,
+      # 80,
       100,
-      126,
-      160,
-      200,
+      # 126,
+      # 160,
+      # 200,
       250,
-      320,
-      400,
+      # 320,
+      # 400,
       500,
-      630,
-      800,
+      # 630,
+      # 800,
       1000,
-      1270,
-      1600,
+      # 1270,
+      # 1600,
       2000,
-      2500,
-      3150, 
+      # 2500,
+      # 3150, 
   ]
 
 # --- Data processing configuration ---
-downsampling: 10
+downsampling: 2
 nondim: 
   f: 
     shift: false #
