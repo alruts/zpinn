@@ -162,7 +162,7 @@ def mark_side_lengths(ax_3d, lx, ly, lz, center=(0, 0, 0), d=0.15):
     # mark the side lengths a
     ax_3d.text(
         -(x0 + lx / 2),
-        -(y0 - d*2.2),
+        -(y0 - d*2),
         0,
         "$l_x=1$ m",
         color="k",
@@ -170,7 +170,7 @@ def mark_side_lengths(ax_3d, lx, ly, lz, center=(0, 0, 0), d=0.15):
     )
 
     ax_3d.text(
-        x0 - d*2.2,
+        x0 - d*2,
         y0 + ly / 2,
         0,
         "$l_y=1$ m",
@@ -179,8 +179,8 @@ def mark_side_lengths(ax_3d, lx, ly, lz, center=(0, 0, 0), d=0.15):
     )
 
     ax_3d.text(
-        x0 - d*2,
-        y0 - d*2,
+        x0 - d*1.4,
+        y0 - d*1.4,
         lz / 2,
         "$l_z=0.05$ m",
         color="k",

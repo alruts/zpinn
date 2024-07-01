@@ -254,10 +254,11 @@ def flatten_pytree(pytree):
     """Flattens a pytree."""
     return ravel_pytree(pytree)[0]
 
-
 def cat_batches(batches):
     """Concatenates a list of batches."""
-    result = dict(x=jnp.array([]), y=jnp.array([]), z=jnp.array([]), f=jnp.array([]))
+    result = dict(
+        x=jnp.array([]), y=jnp.array([]), z=jnp.array([]), f=jnp.array([])
+    )
     for batch in batches:
         for key in batch.keys():
             result[key] = jnp.concatenate([result[key], batch[key]], axis=0)
