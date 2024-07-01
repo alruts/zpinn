@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 sys.path.append("..\..\src")
 from zpinn.impedance_models import miki_model, R_plus_2, RMK_plus_1
 
-f = np.linspace(50, 500, 100)
+f = np.linspace(100, 2000, 1000)
 
 # %% Miki model
 
@@ -27,13 +27,17 @@ coeffs ={
 
 zr, zi = RMK_plus_1(coeffs, f)
 
-plt.subplots(1, 1, figsize=(10, 10))
-plt.plot(f, zr, label="Real pred", color="red")
-plt.plot(f, zi, label="Imaginary pred", color="blue", linestyle="--")
-plt.plot(f, zr_miki, label="Real Miki", color="green")
-plt.plot(f, zi_miki, label="Imaginary Miki", color="orange", linestyle="--")
-plt.legend()
-plt.xlabel("Frequency [Hz]")
-plt.ylabel("Impedance [Ohm]")
+plt.subplots(1, 1, figsize=(6, 4))
+# plt.plot(f, zr, label="Real pred", color="red")
+# plt.plot(f, zi, label="Imaginary pred", color="blue", linestyle="--")
+plt.semilogx(f, zr_miki, label="Real", color="red")
+plt.semilogx(f, zi_miki, label="Imaginary", color="blue", linestyle="--")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Normal Specific Impedance ($\mathrm{Pa}\cdot\mathrm{s}/\mathrm{m}^3$)")
 plt.grid()
-plt.title("RMK+1 model")
+plt.legend()
+plt.xticks([100, 250, 500, 1000, 2000],["100", "250", "500", "1k", "2k"])
+
+plt.minorticks_off()
+
+plt.tight_layout()
