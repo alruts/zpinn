@@ -117,8 +117,8 @@ def preprocess(config=CONFIG):
             "imag_pressure": downsample_fn(
                 data["imag_pressure"], config.downsampling
             ),
-            "real_impedance": data["real_impedance"],
-            "imag_impedance": data["imag_impedance"],
+            "real_impedance": np.array(data["real_impedance"]),
+            "imag_impedance": np.array(data["imag_impedance"]),
             "ref": data.ref,
         }
 
