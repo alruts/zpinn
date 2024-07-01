@@ -4,7 +4,6 @@ import sys
 import jax.numpy as jnp
 import jax.random as jrandom
 import matplotlib.pyplot as plt
-from jax.tree_util import tree_map
 from omegaconf import OmegaConf
 
 sys.path.append("src")
@@ -66,7 +65,7 @@ def main(config=CONFIG):
         sample_dimensions["lz"] / 2,
     )
     # initialize 3D plot
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"},figsize=(4, 3))
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 
     # draw the sample
     ax = draw_shoebox(ax, **sample_dimensions, center=sample_center)
@@ -90,9 +89,6 @@ def main(config=CONFIG):
     dom_data = next(iter(dom_loader))
     bnd_data = next(iter(bnd_loader))
     mes_data, _ = next(iter(data_loader))
-    
-    mes_data = tree_map(lambda x: x.numpy(), mes_data)
-    
 
     # plot the collocation points
     x, y, z = dom_data["x"], dom_data["y"], dom_data["z"]
@@ -132,7 +128,7 @@ def main(config=CONFIG):
     ax.set_zticks([0, 0.05, 0.07])
 
     # export as as pgf and show
-    ax.legend(loc="best", fontsize="small")
+    ax.legend(loc="upper right", fontsize="small")
 
     # remove whitespace under the plot
     plt.tight_layout()
