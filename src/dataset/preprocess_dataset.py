@@ -24,6 +24,7 @@ CONFIG = OmegaConf.load(os.path.join(args.config_path))
 # Helper function
 downsample_fn = lambda data, factor: data[::factor, ::factor, :]
 
+
 def preprocess(config=CONFIG):
     raw_path = os.path.join(
         config.paths.data,
@@ -42,81 +43,43 @@ def preprocess(config=CONFIG):
     # Initialize processed DataFrame
     processed_df = pd.DataFrame()
 
-    # concatenate all pressure values to compute mean and max
-    _p_re = np.concatenate(
-        [
-            raw_df[frequency]["real_pressure"]
-            for frequency in config.dataset.frequencies
-        ],
-        axis=-1,
-    )
-    _p_im = np.concatenate(
-        [
-            raw_df[frequency]["imag_pressure"]
-            for frequency in config.dataset.frequencies
-        ],
-        axis=-1,
-    )
-    x, y, z = raw_df.attrs["grid"]
-
     # Get frequencies
     f = np.array(config.dataset.frequencies, dtype=np.float32)
 
-    # compute shift values
-    a0 = np.min(_p_re) if config.nondim.p.shift else 0
-    b0 = np.min(_p_im) if config.nondim.p.shift else 0
-    x0 = np.min(x) if config.nondim.x.shift else 0
-    y0 = np.min(y) if config.nondim.y.shift else 0
-    z0 = np.min(z) if config.nondim.z.shift else 0
-    f0 = np.min(f) if config.nondim.f.shift else 0
+    # fetch and downsample the grid
+    x, y, z = raw_df.attrs["grid"]
+    x, y, z = [downsample_fn(arr, config.downsampling) for arr in (x, y, z)]
 
-    # compute the scale values
-    ac = np.max(abs(_p_re - a0)) if config.nondim.p.scale else 1
-    bc = np.max(abs(_p_im - b0)) if config.nondim.p.scale else 1
-    xc = np.max(abs(x - x0)) if config.nondim.x.scale else 1
-    yc = np.max(abs(y - y0)) if config.nondim.y.scale else 1
-    zc = np.max(abs(z - z0)) if config.nondim.z.scale else 1
-    fc = np.max(abs(f - f0)) if config.nondim.f.scale else 1
-
-    # downsample spatial coordinates
-    x, y, z = [
-        downsample_fn(arr, config.downsampling) for arr in (x, y, z)
-    ]
-
+    # initialize transforms
     logging.info("Using non-dimensionalization")
     transforms = {
-        "x0": x0,
-        "xc": xc,
-        "y0": y0,
-        "yc": yc,
-        "z0": z0,
-        "zc": zc,
-        "f0": f0,
-        "fc": fc,
-        "a0": a0,
-        "ac": ac,
-        "b0": b0,
-        "bc": bc,
+        "x0": 0,
+        "xc": 1,
+        "y0": 0,
+        "yc": 1,
+        "z0": 0,
+        "zc": 1,
+        "f0": 0,
+        "fc": 1,
+        "a0": 0,
+        "ac": 1,
+        "b0": 0,
+        "bc": 1,
     }
 
     # loop over the frequencies and save the ground truth values
     for idx, frequency in enumerate(config.dataset.frequencies):
         # Load the data
         data = raw_df[frequency]
-        
-        
+
         ref = data.ref
         ref["real_velocity"] = -ref["real_velocity"]
         ref["imag_velocity"] = -ref["imag_velocity"]
 
         # save ground truth and transforms to the processed dataframe
         gt = {
-            "real_pressure": downsample_fn(
-                data["real_pressure"], config.downsampling
-            ),
-            "imag_pressure": downsample_fn(
-                data["imag_pressure"], config.downsampling
-            ),
+            "real_pressure": downsample_fn(data["real_pressure"], config.downsampling),
+            "imag_pressure": downsample_fn(data["imag_pressure"], config.downsampling),
             "real_impedance": np.array(data["real_impedance"]),
             "imag_impedance": np.array(data["imag_impedance"]),
             "ref": data.ref,
