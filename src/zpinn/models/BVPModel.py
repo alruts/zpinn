@@ -444,20 +444,20 @@ class BVPModel(eqx.Module):
     @eqx.filter_jit
     def bc_strategy(self, losses):
         """Boundary condition balancing strategy."""
-        decay = 1.0
-        norm_factor = None
-        end_value = 1e-3
+        a = 1.0
+        b = None
+        C = 1e-3
         
         # save first time step losses
-        if norm_factor is None:
-            norm_factor = {}
-            norm_factor["re"] = losses["data_re"] + losses["pde_re"]
-            norm_factor["im"] = losses["data_im"] + losses["pde_im"]
+        if b is None:
+            b = {}
+            b["re"] = losses["data_re"] + losses["pde_re"]
+            b["im"] = losses["data_im"] + losses["pde_im"]
 
         exp_decay = lambda x, a, b: jnp.exp(-a / b * x)
 
-        w_re = end_value * exp_decay(losses["data_re"] + losses["pde_re"], decay, norm_factor["re"])
-        w_im = end_value * exp_decay(losses["data_im"] + losses["pde_im"], decay, norm_factor["im"])
+        w_re = C * exp_decay(losses["data_re"] + losses["pde_re"], a, b["re"])
+        w_im = C * exp_decay(losses["data_im"] + losses["pde_im"], a, b["im"])
 
         losses["bc_re"] = w_re * losses["bc_re"]
         losses["bc_im"] = w_im * losses["bc_im"]
