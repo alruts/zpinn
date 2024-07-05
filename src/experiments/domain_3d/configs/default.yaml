@@ -27,7 +27,7 @@ training:
 architecture:
   name: modified_siren
   in_features: 3
-  out_features: 2
+  out_features: 2                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
   hidden_features: 16
   hidden_layers: 4
   outermost_linear: true
@@ -46,8 +46,9 @@ batch:
       - -0.3
       - 0.3
       z: # min, max
-      - 0.0
-      - 0.09
+      - 0
+      - 1
+      - 5
       f: # list of frequencies
       - 250
 
