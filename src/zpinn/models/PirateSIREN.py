@@ -73,7 +73,7 @@ class PirateSIREN(eqx.Module):
 
         self.pirate_blocks = []
 
-        # u and v layers
+        # u and v encoding layers
         self.u = SineLayer(
             omega_0=first_omega_0,
             is_first=True,
@@ -89,15 +89,25 @@ class PirateSIREN(eqx.Module):
             key=next(keys_iter),
         )
 
-        # Hidden layers
-        for _ in range(hidden_layers):
+        # first hidden layer
+        self.pirate_blocks.append(
+            PirateBlock(
+                omega_0=hidden_omega_0,
+                in_features=in_features,
+                hidden_features=hidden_features,
+                key=next(keys_iter),
+                is_first=True,
+            )
+        )
+        # remaining hidden layers
+        for _ in range(hidden_layers) - 1:
             self.pirate_blocks.append(
                 PirateBlock(
                     omega_0=hidden_omega_0,
                     in_features=in_features,
                     hidden_features=hidden_features,
                     key=next(keys_iter),
-                    is_first=True,
+                    is_first=False,
                 )
             )
 
