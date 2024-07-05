@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 
 # global params
 FONT_SIZE = 10
-FIG_SIZE = (5.11, 3.61)  # (width, height) in inches
+FIG_SIZE = (4.25, 3.0)  # (width, height) in inches
 
 # set all font sizes to FONT_SIZE
 plt.rcParams["font.size"] = FONT_SIZE
