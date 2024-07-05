@@ -59,6 +59,7 @@
 **/comsol/
 **/notebooks/
 **/data/
+**/scraps/
 
 # Ignore todo list
 **/todo.txt
