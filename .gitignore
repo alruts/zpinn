@@ -13,6 +13,9 @@
 *.svg
 *.pgf
 
+# Ignore excel
+*.xlsx
+
 # Ignore video files
 *.mp4
 *.gif
