@@ -1,6 +1,6 @@
 paths:
-  mph: "comsol\\shoebox3.mph"
-  data: ".\\data"
+  mph: "comsol/shoebox.mph"
+  data: "data"
 
 # --- Simulation configuration for COMSOL ---
 
@@ -33,9 +33,9 @@ source:
 
 grid:
   domain_side: 1 # 1 m
-  domain_height: 0.01
-  dx: 0.01 # spatial resolution in x
-  dy: 0.01 # spatial resolution in y
+  domain_height: 0.5 # 0.2 m
+  dx: 0.025 # spatial resolution in x # 0.025 m
+  dy: 0.025 # spatial resolution in y # 0.025 m
   dz: 0.01 # spatial resolution in z
   delta_height: 0.01 # distance between the sample and the grid
   x_start: -grid.domain_side / 2
@@ -46,47 +46,47 @@ grid:
   z_stop: grid.z_start + grid.domain_height
 
 mesh:
-  num_elements_per_wavelength: 4
+  num_elements_per_wavelength: 10
 
 dataset:
   name: shoebox
   frequencies: [
-      50,
-      63,
-      80,
+      # 50,
+      # 63,
+      # 80,
       100,
-      126,
-      160,
-      200,
+      # 126,
+      # 160,
+      # 200,
       250,
-      320,
-      400,
+      # # 320,
+      # # 400,
       500,
-      # 630,
-      # 800,
-      # 1000,
-      # 1270,
-      # 1600,
-      # 2000,
+      # # 630,
+      # # 800,
+      1000,
+      # # 1270,
+      # # 1600,
+      2000,
       # 2500,
       # 3150, 
   ]
 
 # --- Data processing configuration ---
-downsampling: 10
+downsampling: 2
 nondim: 
   f: 
     shift: false
-    scale: true
+    scale: false
   x:
-    shift: true
-    scale: true
+    shift: false
+    scale: false
   y:
-    shift: true
-    scale: true
+    shift: false
+    scale: false
   z:
     shift: false
-    scale: true
+    scale: false
   p:
-    shift: true
-    scale: true
+    shift: false
+    scale: false

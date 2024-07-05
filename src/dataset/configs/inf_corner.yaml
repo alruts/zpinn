@@ -1,5 +1,5 @@
 paths:
-  mph: "comsol/inf_baffle"
+  mph: "comsol/inf_corner.mph"
   data: "data"
 
 # --- Simulation configuration for COMSOL ---
@@ -38,7 +38,7 @@ mesh:
   num_elements_per_wavelength: 40
 
 dataset:
-  name: inf_baffle
+  name: inf_corner
   frequencies: [
       # 50,
       # 63,
