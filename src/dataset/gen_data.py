@@ -17,6 +17,7 @@ from zpinn.utils import (
 )
 from zpinn.impedance_models import miki_model as miki
 
+
 @hydra.main(
     config_path="configs", config_name="inf_baffle", version_base=hydra.__version__
 )
@@ -62,6 +63,9 @@ def gen_data(config):
         # Raw path
         save_name = f"{name}_{frequency}_Hz"
         save_name = os.path.join(tmp_dir, save_name)
+        
+        if frequency > 1000:
+            set_param(model, "mesh.num_elements_per_wavelength", 10)
 
         # Compute the impedance at the given frequency
         impedance = miki(
@@ -117,6 +121,7 @@ def gen_data(config):
         df[frequency] = gt
 
         # clear memory
+        model.save(config.dataset.name + "_" + str(frequency) + "_out" + ".mph")
         model.clear()
 
         logging.log(logging.INFO, f"Simulation for {frequency} Hz completed")
