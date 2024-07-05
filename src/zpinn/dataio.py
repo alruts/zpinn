@@ -190,16 +190,22 @@ class PressureDataset(Dataset):
             else:
                 return arr
 
+        # handle z filtering
+        if len(z) > 2:
+            self._z = self._z[z]  # filter the z values
+            slice_z = z
+        else:
+            slice_z = slice(*get_lohi(self._z, *z)) if z is not None else slice(None)
+            self._z = filter_data(self._z, z)
+
         # get the slice indices before filtering
         slice_x = slice(*get_lohi(self._x, *x)) if x is not None else slice(None)
         slice_y = slice(*get_lohi(self._y, *y)) if y is not None else slice(None)
-        slice_z = slice(*get_lohi(self._z, *z)) if z is not None else slice(None)
 
         # filter the dataset
         self._f = f if f is not None else self._f
         self._x = filter_data(self._x, x)
         self._y = filter_data(self._y, y)
-        self._z = filter_data(self._z, z)
 
         # update the number of points
         self.n_x = len(self._x)
